@@ -1,0 +1,47 @@
+#!/bin/sh -e
+#
+# /etc/init.d/goldengate-server startup script for GoldenGateServer
+#
+# Written by Bob Morris <ram@cs.umb.edu>
+
+## Note: if you are remotely logged in via ssh -X
+## invoking start will result in harmless
+## warning that X11 authentication fails
+## That's because this script su's to ggserver
+## a dummy user without sufficient authority
+## to run remote X11 sessions.
+
+# 
+#
+### BEGIN INIT INFO
+# Provides:          GoldenGateServer
+# Required-Start:    $local_fs $remote_fs $network
+# Required-Stop:     $local_fs $remote_fs $network
+# Should-Start:      $named
+# Should-Stop:       $named
+# Default-Start:     2 3 4 5
+# Default-Stop:      1
+# Short-Description: Start/stop GoldenGateServer
+# Description:       Start or stop the Golden Gate Server
+### END INIT INFO
+
+GGSBIN="/GgServer/bin/ggserver"
+GGUSER="ggserver"
+SU="su $GGUSER -c"
+
+case "$1" in
+    'start')
+        su  $GGUSER -c  "$GGSBIN start;"
+        ;;
+
+    'stop')
+        su  $GGUSER  -c "$GGSBIN stop;"
+        ;;
+
+    'restart')
+	su $GGUSER -c  "$GGSBIN stop;" sleep 5; su $GGUSER  -c "$GGSBIN start;"
+	;;
+    *)
+        echo "Usage: /etc/init.d/ggserver { start | stop }"
+        ;;
+esac

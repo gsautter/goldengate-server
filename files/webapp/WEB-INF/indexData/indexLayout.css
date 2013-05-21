@@ -1,0 +1,40 @@
+/* FORMATS FOR LINK LIST */
+
+.linkBox {
+  width: 700;
+  margin: 10px 0px 10px;
+}
+
+.linkTable {
+  padding: 20px 30px 30px;
+  border: solid 1px #9c0;
+}
+
+.linkIconCell {
+  padding-top: 15px;
+  vertical-align: top;
+}
+
+.linkIcon {
+  height: 100%;
+  padding-right: 5px;
+}
+
+.linkIconImage {
+  height: 16;
+  width: 16;
+  border: none;
+}
+
+.linkCell {
+  padding-top: 15px;
+}
+
+.linkLabel {
+	font-size: 11pt;
+	font-weight: bold;
+}
+
+.linkDescription {
+	font-size: 11pt;
+}

@@ -1,0 +1,9 @@
+cssNames = "indexLayout.css";
+links = "manager";
+
+manager.address = "manager";
+manager.target = "_blank";
+manager.label = "Manage Document Collection";
+manager.title = "Manage the document collection in this GoldenGATE Server (login required)";
+manager.icon = "manager.jpg";
+manager.description = "file: manager.html";

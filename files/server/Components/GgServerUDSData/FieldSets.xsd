@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:element name="fieldSets">
+		<xs:complexType>
+			<xs:sequence minOccurs="0" maxOccurs="unbounded">
+				<xs:element name="fieldSet">
+					<xs:annotation>
+						<xs:documentation>a set of related data fields</xs:documentation>
+					</xs:annotation>
+					<xs:complexType>
+						<xs:sequence maxOccurs="unbounded">
+							<xs:element name="field">
+								<xs:annotation>
+									<xs:documentation>an individual data field</xs:documentation>
+								</xs:annotation>
+								<xs:complexType>
+									<xs:sequence minOccurs="0" maxOccurs="unbounded">
+										<xs:element name="option">
+											<xs:annotation>
+												<xs:documentation>single option in a combo box. options present make a field a combo box automatically.</xs:documentation>
+											</xs:annotation>
+											<xs:complexType>
+												<xs:attribute name="value" use="required">
+													<xs:annotation>
+														<xs:documentation>the option value</xs:documentation>
+													</xs:annotation>
+												</xs:attribute>
+											</xs:complexType>
+										</xs:element>
+									</xs:sequence>
+									<xs:attribute name="name" use="required">
+										<xs:annotation>
+											<xs:documentation>name of the field, has to be unique in the field set</xs:documentation>
+										</xs:annotation>
+									</xs:attribute>
+									<xs:attribute name="label" use="required">
+										<xs:annotation>
+											<xs:documentation>label to display next to the field</xs:documentation>
+										</xs:annotation>
+									</xs:attribute>
+									<xs:attribute name="match">
+										<xs:annotation>
+											<xs:documentation>regular expression for validating input data. if not given, there is no validation</xs:documentation>
+										</xs:annotation>
+									</xs:attribute>
+								</xs:complexType>
+							</xs:element>
+						</xs:sequence>
+						<xs:attribute name="name" use="required">
+							<xs:annotation>
+								<xs:documentation>name of the field set, has to be unique</xs:documentation>
+							</xs:annotation>
+						</xs:attribute>
+						<xs:attribute name="label" use="required">
+							<xs:annotation>
+								<xs:documentation>label to display above the field set</xs:documentation>
+							</xs:annotation>
+						</xs:attribute>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+</xs:schema>

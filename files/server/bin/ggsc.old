@@ -1,0 +1,6 @@
+#! /bin/bash
+startedFrom="${BASH_ARGS[0]}"
+ownLocation="${0%/*}"
+cd $ownLocation/..
+java -jar GgServerConsole.jar
+cd $startedFrom

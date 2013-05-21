@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fieldSets xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="FieldSets.xsd">
+	<fieldSet name="personal" label="Personal Information">
+		<field label="Last Name" name="lastName"/>
+		<field label="First Name" name="firstName"/>
+		<field label="Gender" name="gender">
+			<option value="Female"/>
+			<option value="Male"/>
+		</field>
+		<field label="Date of Birth (DD-MM-YYYY)" name="birthday" match="[0-9]++[\/\-\s\.][0-9]++[\/\-\s\.][0-9]++"/>
+	</fieldSet>
+	<fieldSet name="contact" label="Contact Information">
+		<field label="eMail Address" name="eMail" match="[^\@\s]++\@[^\@\s]++"/>
+		<field label="Skype Name" name="skype"/>
+	</fieldSet>
+</fieldSets>

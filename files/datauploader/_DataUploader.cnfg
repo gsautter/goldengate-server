@@ -1,0 +1,5 @@
+host-Bo1D = "http://plazi.cs.umb.edu/GgServer/Downloads";
+host-Bo1U = "http://plazi.cs.umb.edu/GgServer/Updates";
+host-Bo2D = "http://plazi2.cs.umb.edu/GgServer/Downloads";
+host-Bo2U = "http://plazi2.cs.umb.edu/GgServer/Updates";
+host-Be1D = "http://plazi.org:8080/GgServer/Downloads";

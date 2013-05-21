@@ -1,0 +1,117 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<web-app>
+	<servlet>
+		<servlet-name>ResServlet</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.easyIO.web.ResourceServlet</servlet-class>
+		<init-param>
+			<param-name>dataPath</param-name>
+			<param-value>resData</param-value>
+		</init-param>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>ResServlet</servlet-name>
+		<url-pattern>/resources/*</url-pattern>
+	</servlet-mapping>
+	
+	
+	<servlet>
+		<servlet-name>GgServerIndex</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.client.IndexServlet</servlet-class>
+		<init-param>
+			<param-name>dataPath</param-name>
+			<param-value>indexData</param-value>
+		</init-param>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>GgServerIndex</servlet-name>
+		<url-pattern>/index/*</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>GgServerIndex</servlet-name>
+		<url-pattern>/index</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>GgServerIndex</servlet-name>
+		<url-pattern>/index.html</url-pattern>
+	</servlet-mapping>
+	
+	<servlet>
+		<servlet-name>GgServerManager</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.uaa.webClient.AuthenticatedWebClientServlet</servlet-class>
+		<init-param>
+			<param-name>dataPath</param-name>
+			<param-value>managerData</param-value>
+		</init-param>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>GgServerManager</servlet-name>
+		<url-pattern>/manager</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>GgServerManager</servlet-name>
+		<url-pattern>/manager/*</url-pattern>
+	</servlet-mapping>
+	
+	
+	<!--servlet>
+		<servlet-name>ConfigurationServlet</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.ecs.client.GoldenGateConfigurationServlet</servlet-class>
+		<init-param>
+			<param-name>configFile</param-name>
+			<param-value>Configurations.cnfg</param-value>
+		</init-param>
+		<init-param>
+			<param-name>dataPath</param-name>
+			<param-value>ecsClientData</param-value>
+		</init-param>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>ConfigurationServlet</servlet-name>
+		<url-pattern>/Configurations/*</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>ConfigurationServlet</servlet-name>
+		<url-pattern>/404.html</url-pattern>
+	</servlet-mapping-->
+	
+	<servlet>
+		<servlet-name>GgServerClientProxy</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.client.ProxyServlet</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>GgServerClientProxy</servlet-name>
+		<url-pattern>/proxy</url-pattern>
+	</servlet-mapping>
+	
+	
+	<servlet>
+		<servlet-name>DownloadsServlet</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.utilities.DownloadServlet</servlet-class>
+		<init-param>
+			<param-name>dataPath</param-name>
+			<param-value>Downloads</param-value>
+		</init-param>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>DownloadsServlet</servlet-name>
+		<url-pattern>/Downloads</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>DownloadsServlet</servlet-name>
+		<url-pattern>/Downloads/*</url-pattern>
+	</servlet-mapping>
+	
+	
+	<servlet>
+		<servlet-name>RefresherServlet</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.utilities.RefresherServlet</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>RefresherServlet</servlet-name>
+		<url-pattern>/Refresher</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>RefresherServlet</servlet-name>
+		<url-pattern>/Refresher/*</url-pattern>
+	</servlet-mapping>
+</web-app>
