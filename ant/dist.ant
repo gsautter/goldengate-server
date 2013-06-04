@@ -115,9 +115,7 @@
 		<delete file="${app.webfrontend}" />
 		<war warfile="${app.webfrontend}" webxml="${file.home}/webapp/WEB-INF/web.xml">
 			<fileset dir="${file.home}/webapp" excludes="WEB-INF/web.xml" />
-			<fileset dir="${dist.home}">
-				<include name="**/WEB-INF/**" />
-			</fileset>
+			<fileset dir="${dist.home}" includes="**/WEB-INF/**" />
 			<fileset dir="${lib.home}" includes="EasyIO.jar"/>
 			<fileset dir="${lib.home}" includes="Gamta.jar"/>
 			<fileset dir="${lib.home}" includes="HtmlXmlUtil.jar.jar"/>
