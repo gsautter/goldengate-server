@@ -8,16 +8,17 @@
 	<target name="zips" depends="backendzip,frontendzip,authmanager,datauploaderzip">
 	</target>
 	
-	<target name="backendzip" depends="serverjar,serverconsolejar,resjar,uaajar,udsjar,upsjar">
+	<target name="backendzip" depends="serverjar,serverconsolejar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
 		<delete file="${app.server}"/>
 		<zip destfile="${app.server}">
 			<fileset dir="${file.home}/server"/>
+			<fileset dir="${dist.home}/Components" includes="Installer.jar"/>
 			<fileset dir="${dist.home}" includes="GgServer.jar"/>
 			<fileset dir="${dist.home}" includes="GgServerConsole.jar"/>
-			<fileset dir="${dist.home}" includes="Components/**.jar"/>
+			<fileset dir="${dist.home}" includes="Components/**.jar" excludes="Components/Installer.jar" />
 			<fileset dir="${lib.home}" includes="EasyIO.jar"/>
 			<fileset dir="${lib.home}" includes="Gamta.jar"/>
-			<fileset dir="${lib.home}" includes="HtmlXmlUtil.jar.jar"/>
+			<fileset dir="${lib.home}" includes="HtmlXmlUtil.jar"/>
 			<fileset dir="${lib.home}" includes="mail.jar"/>
 			<fileset dir="${lib.home}" includes="StringUtils.jar"/>
 			<fileset dir="." includes="LICENSE.txt"/>
@@ -50,6 +51,15 @@
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/GoldenGateServerConsole.java" />
 			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="serverextenderjar">
+		<delete file="${jar.serverextender}"/>
+		<jar destfile="${jar.serverextender}" manifest="${file.home}/MANIFEST.serverextender.MF">
+			<fileset dir="${build.home}/classes" includes="**/utilities/ServerComponentInstaller*.class"/>
+			<fileset dir="${src.home}" includes="**/utilities/ServerComponentInstaller.java"/>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
 	</target>
@@ -111,11 +121,12 @@
 	</target>
 	
 	
-	<target name="frontendzip" depends="webfrontendjar,authwebclientjar,uaamodul,udsmodul,upsmodul">
+	<target name="frontendzip" depends="webfrontendjar,authwebclientjar,uaamodul,udsmodul,upsmodul,webappextenderjar">
 		<delete file="${app.webfrontend}" />
 		<zip destfile="${app.webfrontend}">
 			<fileset dir="${file.home}/webapp" />
-			<fileset dir="${dist.home}" includes="**/WEB-INF/**" />
+			<fileset dir="${dist.home}" includes="**/WEB-INF/**" excludes="WEB-INF/Installer.jar"/>
+			<fileset dir="${dist.home}/WEB-INF" includes="Installer.jar" />
 			<fileset dir="${lib.home}" includes="EasyIO.jar"/>
 			<fileset dir="${lib.home}" includes="Gamta.jar"/>
 			<fileset dir="${lib.home}" includes="HtmlXmlUtil.jar.jar"/>
@@ -245,6 +256,15 @@
 		<jar destfile="${jar.uploader}" manifest="${file.home}/MANIFEST.datauploader.MF">
 			<fileset dir="${build.home}/classes" includes="**/utilities/DataUploader*.class"/>
 			<fileset dir="${src.home}" includes="**/utilities/DataUploader.java"/>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="webappextenderjar">
+		<delete file="${jar.webappextender}"/>
+		<jar destfile="${jar.webappextender}" manifest="${file.home}/MANIFEST.webappextender.MF">
+			<fileset dir="${build.home}/classes" includes="**/utilities/WebAppExtensionInstaller*.class"/>
+			<fileset dir="${src.home}" includes="**/utilities/WebAppExtensionInstaller.java"/>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
 	</target>
