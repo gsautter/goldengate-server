@@ -59,7 +59,9 @@
 		<delete file="${jar.serverextender}"/>
 		<jar destfile="${jar.serverextender}" manifest="${file.home}/MANIFEST.serverextender.MF">
 			<fileset dir="${build.home}/classes" includes="**/utilities/ServerComponentInstaller*.class"/>
+			<fileset dir="${build.home}/classes" includes="**/utilities/InstallerUtils*.class"/>
 			<fileset dir="${src.home}" includes="**/utilities/ServerComponentInstaller.java"/>
+			<fileset dir="${src.home}" includes="**/utilities/InstallerUtils.java"/>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
 	</target>
@@ -264,7 +266,9 @@
 		<delete file="${jar.webappextender}"/>
 		<jar destfile="${jar.webappextender}" manifest="${file.home}/MANIFEST.webappextender.MF">
 			<fileset dir="${build.home}/classes" includes="**/utilities/WebAppExtensionInstaller*.class"/>
+			<fileset dir="${build.home}/classes" includes="**/utilities/InstallerUtils*.class"/>
 			<fileset dir="${src.home}" includes="**/utilities/WebAppExtensionInstaller.java"/>
+			<fileset dir="${src.home}" includes="**/utilities/InstallerUtils.java"/>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
 	</target>

@@ -27,20 +27,132 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.utilities;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
+
+
 /**
+ * Installer tool for zipped GoldenGATE Server components and updates thereof,
+ * retaining files that were modified locally on updates.
+ * 
  * @author sautter
- *
  */
 public class ServerComponentInstaller {
-	
-	//	TODO unpack server components from ZIPs
-	
-	/**
-	 * @param args
-	 */
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
 		
+		//	get base folder
+		File basePath = (new File(".").getAbsoluteFile());
+		if (".".equals(basePath.getName()))
+			basePath = basePath.getParentFile();
+		
+		//	check where we are
+		File ggServerJar = new File(basePath, "GgServer.jar");
+		if (!ggServerJar.exists()) {
+			System.out.println("Please run the installer in the root folder of GoldenGATE Server.");
+			return;
+		}
+		
+		//	get component folder
+		File compPath = new File(basePath, GoldenGateServerConstants.COMPONENT_FOLDER_NAME);
+		
+		//	check arguments
+		if ((args.length == 0) || (args[0] == null) || (args[0].trim().length() == 0)) {
+			System.out.println("Please specify the name of the zip file to install or update from.");
+			return;
+		}
+		
+		//	find archive to extract (check update case first)
+		String zipName = args[0];
+		File zipFile = new File(compPath, zipName);
+		if (!zipFile.exists())
+			zipFile = new File(basePath, zipName);
+		if (!zipFile.exists()) {
+			System.out.println(zipName + " not found.");
+			return;
+		}
+		
+		//	get extension data
+		String extName = zipName.substring(0, (zipName.length() - ".zip".length()));
+		
+		//	load file name filter
+		ArrayList ignoreFileNames = new ArrayList();
+		try {
+			File ifnFile = new File(compPath, ("update." + extName + ".cnfg"));
+			BufferedReader ifnBr = new BufferedReader(new InputStreamReader(new FileInputStream(ifnFile)));
+			for (String ifn; (ifn = ifnBr.readLine()) != null;) {
+				ifn = ifn.trim();
+				if ((ifn.length() == 0) || ifn.startsWith("//"))
+					continue;
+				
+				//	simple string
+				if (ifn.indexOf('*') == -1) {
+					ignoreFileNames.add(ifn);
+					continue;
+				}
+				
+				//	pattern
+				StringBuffer ifnRegEx = new StringBuffer();
+				for (int c = 0; c < ifn.length(); c++) {
+					char ch = ifn.charAt(c);
+					if (Character.isLetterOrDigit(ch))
+						ifnRegEx.append(ch);
+					else if (ch == '*')
+						ifnRegEx.append(".*");
+					else {
+						ifnRegEx.append('\\');
+						ifnRegEx.append(ch);
+					}
+				}
+				ignoreFileNames.add(Pattern.compile(ifnRegEx.toString(), Pattern.CASE_INSENSITIVE));
+			}
+		} catch (IOException ioe) {}
+		
+		//	unzip components
+		try {
+			ZipInputStream webAppZip = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)));
+			for (ZipEntry ze; (ze = webAppZip.getNextEntry()) != null;) {
+				
+				//	test for folders
+				if (ze.isDirectory())
+					continue;
+				
+				//	get and check name
+				String zeName = ze.getName();
+				if (zeName.startsWith(GoldenGateServerConstants.COMPONENT_FOLDER_NAME + "/") || zeName.startsWith(GoldenGateServerConstants.COMPONENT_FOLDER_NAME + "\\"))
+					zeName = zeName.substring(GoldenGateServerConstants.COMPONENT_FOLDER_NAME.length() + 1);
+				
+				//	check ignore patterns
+				for (int i = 0; i < ignoreFileNames.size(); i++) {
+					Object io = ignoreFileNames.get(i);
+					if (((io instanceof Pattern) && ((Pattern) io).matcher(zeName).matches()) || ((io instanceof String) && ((String) io).equalsIgnoreCase(ze.getName()))) {
+						System.out.println(" - ignoring " + zeName);
+						ze = null;
+						break;
+					}
+				}
+				if (ze == null)
+					continue;
+				
+				//	get timestamp and unpack file
+				long zipLastModified = ze.getTime();
+				InstallerUtils.updateFile(compPath, zeName, webAppZip, zipLastModified);
+				
+				//	close current entry
+				webAppZip.closeEntry();
+			}
+		}
+		catch (IOException ioe) {
+			ioe.printStackTrace(System.out);
+		}
 	}
-	
 }
