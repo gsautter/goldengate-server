@@ -59,10 +59,19 @@ public class GoldenGateServerConsole {
 		if (cTimeout < 2)
 			cTimeout = 2;
 		
+		//	start masking System.in
+		ConsoleMasker cm = new ConsoleMasker();
+		cm.start();
+		
+		//	read password
 		System.out.print("Enter Password: ");
 		final BufferedReader commandReader = new BufferedReader(new InputStreamReader(System.in));
 		String password = commandReader.readLine();
 		
+		//	stop masking System.in
+		cm.exit();
+		
+		//	connect to server
 		Socket cSocket;
 		PrintStream cOut;
 		int attempts = 0;
@@ -100,9 +109,9 @@ public class GoldenGateServerConsole {
 			}
 		}
 		
+		//	handle timeout
 		final Socket socket = cSocket;
 		final PrintStream sOut = cOut;
-		
 		final BufferedReader sIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		socket.setSoTimeout(1000 * cTimeout);
 		String response;
@@ -117,13 +126,18 @@ public class GoldenGateServerConsole {
 			return;
 		}
 		
+		//	authentication successful, initialize
 		if ("WELCOME".equals(response)) {
+			
+			//	print welcome message
 			System.out.println(" ==> Authentication successful, have fun");
 			System.out.println("");
 			System.out.println("Global commands:");
 			System.out.println(" - type 'exit' to exit the console");
 			System.out.println(" - type '?' to display help information");
 			System.out.println("");
+			
+			//	relay server output to console
 			socket.setSoTimeout(0);
 			Thread sInThread = new Thread() {
 				public void run() {
@@ -156,13 +170,17 @@ public class GoldenGateServerConsole {
 			};
 			sInThread.start();
 		}
+		
+		//	report error and exit
 		else {
 			System.out.println(" ==> " + response);
 			return;
 		}
 		
+		//	set to empty component prefix
 		sOut.println("cc");
 		
+		//	read commands
 		while (true) try {
 			String commandString = commandReader.readLine();
 			if (commandString == null)
@@ -188,6 +206,22 @@ public class GoldenGateServerConsole {
 		}
 		catch (Exception e) {
 			System.out.println("Error reading or executing console command: " + e.getMessage());
+		}
+	}
+	
+	private static class ConsoleMasker extends Thread {
+		private boolean running = true;
+		public void run() {
+			while (this.running) {
+				System.out.print("\b*");
+				try {
+					sleep(10);
+				} catch (InterruptedException ie) {}
+			}
+			System.out.print("\b");
+		}
+		public synchronized void exit() {
+			this.running = false;
 		}
 	}
 }
