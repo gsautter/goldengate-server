@@ -240,13 +240,15 @@
 				<include name="**/goldenGateServer/uaa/UserAccessAuthorityConstants*.class" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticatedClient*.class" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticationManager*.class" />
+				<include name="**/goldenGateServer/uaa/client/AuthenticationManagerPlugin*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
 				<include name="**/goldenGateServer/client/ServerConnection.java" />
 				<include name="**/goldenGateServer/uaa/UserAccessAuthorityConstants.java" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticatedClient.java" />
-				<include name="**/goldenGateServer/uaa/client/AuthenticationManager*.java" />
+				<include name="**/goldenGateServer/uaa/client/AuthenticationManager.java" />
+				<include name="**/goldenGateServer/uaa/client/AuthenticationManagerPlugin.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
