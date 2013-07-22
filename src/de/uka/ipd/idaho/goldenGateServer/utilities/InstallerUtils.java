@@ -44,6 +44,11 @@ import java.io.OutputStream;
 class InstallerUtils {
 	static void updateFile(File baseFolderPath, String fileName, InputStream source, long sourceLastModified) throws IOException {
 		
+		//	check if target file switched off in local installation, and if so, leave it like that
+		File offTargetFile = new File(baseFolderPath, (fileName + ".off"));
+		if (offTargetFile.exists())
+			fileName = (fileName + ".off");
+		
 		//	create target file
 		File targetFile = new File(baseFolderPath, fileName);
 		boolean targetFileExists = targetFile.exists();
