@@ -129,11 +129,6 @@
 			<fileset dir="${file.home}/webapp" />
 			<fileset dir="${dist.home}" includes="**/WEB-INF/**" excludes="WEB-INF/Installer.jar"/>
 			<fileset dir="${dist.home}/WEB-INF" includes="Installer.jar" />
-			<fileset dir="${lib.home}" includes="EasyIO.jar"/>
-			<fileset dir="${lib.home}" includes="Gamta.jar"/>
-			<fileset dir="${lib.home}" includes="HtmlXmlUtil.jar.jar"/>
-			<fileset dir="${lib.home}" includes="mail.jar"/>
-			<fileset dir="${lib.home}" includes="StringUtils.jar"/>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</zip>
 	</target>

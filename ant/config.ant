@@ -11,15 +11,6 @@
 	<!-- DIRECTORY CONFIGURATION -->
 	
 	<!-- root directory of the common source tree -->
-	<property name="core.src.home" value="../idaho-core/src" />
-	
-	<!-- directory that contains all libraries that are required in the .war -->
-	<property name="core.lib.home" value="../idaho-core/lib" />
-	
-	<!-- directory that contains all libraries that are required in the .war -->
-	<property name="core.dist.home" value="../idaho-core/dist" />
-	
-	<!-- root directory of the common source tree -->
 	<property name="src.home" value="src" />
 	
 	<!-- directory that contains all libraries that are required in the .war -->

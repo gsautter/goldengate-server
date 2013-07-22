@@ -48,7 +48,7 @@
 	</target>
 	<target name="fetch-iclibs" depends="check-fetch-iclibs" if="${iclibs.exists}">
     	<copy todir="${lib.home}" overwrite="true" verbose="false">
-    		<fileset dir="../idaho-core/lib/" includes="**.jar"/>
+    		<fileset dir="../idaho-core/lib/" includes="**.jar" excludes="servlet-api.jar"/>
     	</copy>
 	</target>
 </project>
