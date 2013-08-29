@@ -76,10 +76,10 @@
 	
 	
 	<!-- path to the application .zip file that shall be created -->
-	<property name="app.server" value="${dist.home}/GgServer.app.zip" />
+	<property name="app.server" value="${dist.home}/GgServer.zip" />
 	
 	<!-- path to the application .zip file that shall be created -->
-	<property name="app.webfrontend" value="${dist.home}/GgServer.web.zip" />
+	<property name="app.webfrontend" value="${dist.home}/GgServerWeb.zip" />
 	
 	<!-- path to the application .zip file that shall be created -->
 	<property name="app.uploader" value="${dist.home}/DataUploader.zip" />

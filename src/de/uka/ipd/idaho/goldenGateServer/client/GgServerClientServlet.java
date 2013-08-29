@@ -39,29 +39,26 @@ import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
 
 /**
  * A generic servlet in the web front-end of a GoldenGATE Server via HTTP. This
- * servlet uses a centralized, thus easy to maintain configuration file for
- * obtaining the connection parameters of the backing GoldenGATE Server. By
- * default, this file is <b>GgServerAccess.cnfg</b> in the surrounding
- * web-app's context path. It can be changed to another file somewhere below the
- * web-app's context path through specifying the alternative file path and name
- * in the value of the servlet's <b>serverAccessFile</b> parameter in the
- * web.xml. The server access configuration file is expected to contain the
- * following parameters:
+ * servlet reads the following parameters from web.cnfg configuration file for
+ * obtaining the connection parameters of the backing GoldenGATE Server:
  * <ul>
- * <li><b>serverAddress</b>: the host name of the backing GoldenGATE Server;
- * if no port is specified, the address is interpreted as a URL, thus accessing
- * a remote GoldenGATE Server via an HTTP tunnel</li>
- * <li><b>serverPort</b>: the port the backing GoldenGATE Server listens on;
- * to be omitted for HTTP tunnel connection to the backing GoldenGATE Server</li>
+ * <li><b>serverAddress</b>: the host name of the backing GoldenGATE Server; if
+ * no port is specified, the address is interpreted as a URL, thus accessing a
+ * remote GoldenGATE Server via an HTTP tunnel</li>
+ * <li><b>serverPort</b>: the port the backing GoldenGATE Server listens on; to
+ * be omitted for HTTP tunnel connection to the backing GoldenGATE Server</li>
  * </ul>
- * Each servlet can have its data stored in a separate folder below the
- * surrounding web-app's context path, its so-called data path. The default data
- * path is the web-app's context path itself, but a specific data path can be
- * specified as the <b>dataPath</b> parameter in the web.xml.<br>
+ * Each servlet can have its data stored in a separate folder inside the
+ * surrounding web-app's WEB-INF folder, its so-called data path. The default
+ * data path is the web-app's WEB-INF folder itself, but a specific data path
+ * can be specified as the <b>dataPath</b> parameter in the web.xml.<br>
  * For sub class specific settings and parameters, each servlet in addition has
  * an instance specific configuration file, loaded from its data path. By
  * default, this file is named <b>config.cnfg</b>, but an alternative name can
- * be specified in an the <b>configFile</b> parameter in the web.xml.
+ * be specified in an the <b>configFile</b> parameter in the web.xml. Settings
+ * in the servlet specific configuration file supersense global ones specified
+ * in <code>web.cnfg</code>, so it is easy to work with default values in the
+ * latter location and overwrite them in the more specific files as needed.
  * 
  * @author sautter
  */
@@ -96,43 +93,11 @@ public abstract class GgServerClientServlet extends HtmlServlet implements Golde
 			((ReInitializableServlet) scs).reInit(scs.loadConfig());
 	}
 	
-//	/**
-//	 * the address of the backing GoldenGATE server, as specified in the server
-//	 * access configuration file; this field is provided for transparency, sub
-//	 * classes are recommended to use the readily available serverConnection
-//	 * instead of creating their own
-//	 */
-//	protected String serverAddress;
-//	
-//	/**
-//	 * the port of the backing GoldenGATE server, as specified in the server
-//	 * access configuration file, missing if accessing the backing server via an
-//	 * HTTP tunnel; this field is provided for transparency, sub classes are
-//	 * recommended to use the readily available serverConnection instead of
-//	 * creating their own
-//	 */
-//	protected int serverPort;
-//	
 	/**
 	 * a connection to the backing GoldenGATE server, created from serverAddress
 	 * and serverPort (for convenience)
 	 */
 	protected ServerConnection serverConnection;
-	
-//	
-//	/** the surrounding web-app's context path */
-//	protected File rootFolder;
-//	
-//	/**
-//	 * the servlet's data path as a string, relative to the root path, as
-//	 * specified in the web.xml; this string is either empty, or it starts with
-//	 * a '/', in accordance to the usual return values of the getContextPath()
-//	 * and getServletPath() methods of HttpServletRequest)
-//	 */
-//	protected String dataPath;
-//	
-//	/** the servlet's data path as a folder */
-//	protected File dataFolder;
 	
 	/**
 	 * Initialize the GoldenGATE Server client servlet. This implementation
@@ -142,16 +107,6 @@ public abstract class GgServerClientServlet extends HtmlServlet implements Golde
 	 */
 	protected final void doInit() throws ServletException {
 		super.doInit();
-//		
-//		//	get server access settings
-//		String serverAccessFile = this.getInitParameter("serverAccessFile");
-//		if (serverAccessFile == null)
-//			serverAccessFile = "GgServerAccess.cnfg";
-//		Settings serverAccessSettings = Settings.loadSettings(new File(this.rootFolder, serverAccessFile));
-//		
-//		//	get server access data
-//		String serverAddress = serverAccessSettings.getSetting("serverAddress");
-//		String serverPort = serverAccessSettings.getSetting("serverPort");
 		
 		//	get server access data
 		String serverAddress = this.getSetting("serverAddress");
