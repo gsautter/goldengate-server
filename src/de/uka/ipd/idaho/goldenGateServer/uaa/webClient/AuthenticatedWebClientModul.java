@@ -214,6 +214,4 @@ public abstract class AuthenticatedWebClientModul implements AuthenticatedWebCli
 			throw new IOException("Please authenticate against GoldenGATE Server to perform this action.");
 		this.writePageContent(authClient, pageBuilder);
 	}
-	
-	//	TODO phase out the methods taking an authenticated client for an argument after some grace period
 }

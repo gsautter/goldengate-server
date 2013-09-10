@@ -617,14 +617,6 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 					this.write(clientModuls[m].getModulLabel());
 					this.writeLine("</a>");
 				}
-//				if (this.authClient.isAdmin() || clientModuls[m].displayFor(this.authClient)) {
-//					if (firstModul == null)
-//						firstModul = clientModuls[m];
-//					else this.write("&nbsp;|&nbsp;");
-//					this.write("<a href=\"" + this.request.getContextPath() + this.request.getServletPath() + "/" + clientModuls[m].getClass().getName() + "\">");
-//					this.write(clientModuls[m].getModulLabel());
-//					this.writeLine("</a>");
-//				}
 			
 			this.writeLine("</p>");
 			this.writeLine("</div>");
