@@ -555,6 +555,8 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 		
 		//	display result
 		response.setHeader("Cache-Control", "no-cache"); // no caching for modul pages
+		response.setContentType("text/html");
+		response.setCharacterEncoding("UTF-8");
 		GgServerWebFrontendLogger.logForSession(request.getSession(false).getId(), "Request for modul " + modulName);
 		return new ModulPageBuilder(messages, modulName, this, request, response);
 	}
