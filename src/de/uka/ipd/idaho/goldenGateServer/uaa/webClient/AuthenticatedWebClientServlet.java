@@ -669,7 +669,6 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 				this.writeLine("<p class=\"message\">No modules to display</p>");
 			else if (this.modul == null)
 				this.writeLine("<p class=\"message\">Unknown modul '" + this.modulName + "'</p>");
-//			else this.modul.writePageContent(this.authClient, this);
 			else this.modul.writePageContent(this);
 			this.writeLine("</div>");
 		}

@@ -179,9 +179,6 @@ public abstract class AuthenticatedWebClientModul implements AuthenticatedWebCli
 	/**
 	 * Handle a request. The session associated with the argument HTTP request
 	 * will already be authenticated when this method is invoked.
-	 * @param session the HTTP session the request comes from, to use for
-	 *            authentication when interacting with the server component
-	 *            backing this modul
 	 * @param request the HTTP request to handle
 	 * @return an array of messages reporting on the result of the interaction
 	 *         with the backing server
