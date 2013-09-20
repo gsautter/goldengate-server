@@ -50,9 +50,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet;
-import de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet.ReInitializableServlet;
 import de.uka.ipd.idaho.goldenGateServer.uaa.client.AuthenticatedClient;
 
 /**
@@ -63,23 +61,19 @@ import de.uka.ipd.idaho.goldenGateServer.uaa.client.AuthenticatedClient;
  * 
  * @author sautter
  */
-public class DownloadServlet extends GgServerClientServlet implements ReInitializableServlet {
+public class DownloadServlet extends GgServerClientServlet {
 	
 	private Pattern fileNameFilter;
 	private File[] fileList = new File[0];
 	
 	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet#init(de.uka.ipd.idaho.easyIO.settings.Settings)
+	 * @see de.uka.ipd.idaho.easyIO.web.HtmlServlet#reInit()
 	 */
-	protected void init(Settings config) {
-		this.reInit(config);
-	}
-	
-	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet.ReInitializableServlet#reInit(de.uka.ipd.idaho.easyIO.settings.Settings)
-	 */
-	public void reInit(Settings config) {
-		String fileNameFilter = config.getSetting("fileNameFilter", ".+\\.zip");
+	protected void reInit() throws ServletException {
+		super.reInit();
+		
+		//	refresh file name filter ...
+		String fileNameFilter = this.getSetting("fileNameFilter", ".+\\.zip");
 		try {
 			this.fileNameFilter = Pattern.compile(fileNameFilter);
 		}
@@ -89,6 +83,7 @@ public class DownloadServlet extends GgServerClientServlet implements ReInitiali
 			this.fileNameFilter = Pattern.compile(".+\\.zip");
 		}
 		
+		//	... and file list
 		this.refreshFileList();
 	}
 	
@@ -177,8 +172,7 @@ public class DownloadServlet extends GgServerClientServlet implements ReInitiali
 		response.setContentType("text/xml; charset=utf-8");
 		
 		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), "UTF-8"));
-		bw.write("<files time=\"" + System.currentTimeMillis() + "\">");
-		bw.newLine();
+		bw.write("<files time=\"" + System.currentTimeMillis() + "\">"); bw.newLine();
 		
 		for (int f = 0; f < this.fileList.length; f++) {
 			bw.write("<file" +
@@ -189,8 +183,7 @@ public class DownloadServlet extends GgServerClientServlet implements ReInitiali
 			bw.newLine();
 		}
 		
-		bw.write("</files>");
-		bw.newLine();
+		bw.write("</files>"); bw.newLine();
 		
 		bw.flush();
 	}
@@ -200,45 +193,28 @@ public class DownloadServlet extends GgServerClientServlet implements ReInitiali
 		response.setContentType("text/html; charset=utf-8");
 		
 		BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), "UTF-8"));
-		bw.write("<html><head>");
-		bw.newLine();
-		bw.write("<title>" + this.dataPath + "</title>");
-		bw.newLine();
-		bw.write("</head><body>");
-		bw.newLine();
-		bw.write("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"5\" align=\"center\">");
-		bw.newLine();
+		bw.write("<html><head>"); bw.newLine();
+		bw.write("<title>" + this.dataPath + "</title>"); bw.newLine();
+		bw.write("</head><body>"); bw.newLine();
+		bw.write("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"5\" align=\"center\">"); bw.newLine();
 		
-		bw.write("<tr>");
-		bw.newLine();
-		bw.write("<td align=\"left\"><font size=\"+1\"><strong>Filename</strong></font></td>");
-		bw.newLine();
-		bw.write("<td align=\"center\"><font size=\"+1\"><strong>Size</strong></font></td>");
-		bw.newLine();
-		bw.write("<td align=\"right\"><font size=\"+1\"><strong>Last Modified</strong></font></td>");
-		bw.newLine();
-		bw.write("</tr>");
-		bw.newLine();
+		bw.write("<tr>"); bw.newLine();
+		bw.write("<td align=\"left\"><font size=\"+1\"><strong>Filename</strong></font></td>"); bw.newLine();
+		bw.write("<td align=\"center\"><font size=\"+1\"><strong>Size</strong></font></td>"); bw.newLine();
+		bw.write("<td align=\"right\"><font size=\"+1\"><strong>Last Modified</strong></font></td>"); bw.newLine();
+		bw.write("</tr>"); bw.newLine();
 		
 		for (int f = 0; f < this.fileList.length; f++) {
-			bw.write("<tr" + (((f % 2) == 1) ? " bgcolor=\"#eeeeee\"" : "") + ">");
-			bw.newLine();
-			bw.write("<td align=\"left\">&nbsp;&nbsp;");
-			bw.newLine();
-			bw.write("<a href=\"" + request.getContextPath() + request.getServletPath() + "/" + this.fileList[f].getName() + "\"><tt>" + this.fileList[f].getName() + "</tt></a></td>");
-			bw.newLine();
-			bw.write("<td align=\"right\"><tt>" + (this.fileList[f].length() / 1024) + " kb</tt></td>");
-			bw.newLine();
-			bw.write("<td align=\"right\"><tt>" + lastModifiedFormat.format(new Date(this.fileList[f].lastModified())) + "</tt></td>");
-			bw.newLine();
-			bw.write("</tr>");
-			bw.newLine();
+			bw.write("<tr" + (((f % 2) == 1) ? " bgcolor=\"#eeeeee\"" : "") + ">"); bw.newLine();
+			bw.write("<td align=\"left\">&nbsp;&nbsp;"); bw.newLine();
+			bw.write("<a href=\"" + request.getContextPath() + request.getServletPath() + "/" + this.fileList[f].getName() + "\"><tt>" + this.fileList[f].getName() + "</tt></a></td>"); bw.newLine();
+			bw.write("<td align=\"right\"><tt>" + (this.fileList[f].length() / 1024) + " kb</tt></td>"); bw.newLine();
+			bw.write("<td align=\"right\"><tt>" + lastModifiedFormat.format(new Date(this.fileList[f].lastModified())) + "</tt></td>"); bw.newLine();
+			bw.write("</tr>"); bw.newLine();
 		}
 		
-		bw.write("</table>");
-		bw.newLine();
-		bw.write("</body></html>");
-		bw.newLine();
+		bw.write("</table>"); bw.newLine();
+		bw.write("</body></html>"); bw.newLine();
 		
 		bw.flush();
 	}

@@ -34,12 +34,11 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.util.HashMap;
 
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
-import de.uka.ipd.idaho.easyIO.settings.Settings;
-import de.uka.ipd.idaho.easyIO.web.WebAppHost;
 import de.uka.ipd.idaho.easyIO.web.WebAppHost.AuthenticationProvider;
 import de.uka.ipd.idaho.gamta.util.GamtaClassLoader;
 import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentInitializer;
@@ -63,8 +62,6 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 	/** the name of the GoldenGATE Server backed authentication source this servlet registers with the WebApp Host */
 	public static final String GOLDEN_GATE_SERVER_AUTHENTICATION_PROVIDER_NAME = "GgServer";
 	
-	private WebAppHost webAppHost;
-	
 	private AuthenticatedWebClientModul[] clientModuls = new AuthenticatedWebClientModul[0];
 	private HashMap clientModulsByName = new HashMap();
 	
@@ -75,35 +72,56 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 	private String[] functionsToCallOnUnload;
 	
 	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerHtmlServlet#init(de.uka.ipd.idaho.easyIO.settings.Settings)
+	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet#doInit()
 	 */
-	protected void init(Settings config) {
+	protected void doInit() throws ServletException {
+		super.doInit();
 		
-		//	get moduls
+		//	register authentication provider
+		this.webAppHost.addAuthenticationProvider(new AwcAuthProvider());
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.easyIO.web.HtmlServlet#reInit()
+	 */
+	@Override
+	protected void reInit() throws ServletException {
+		super.reInit();
+		
+		//	get modules
 		this.clientModuls = this.loadModuls(new File(this.dataFolder, "Moduls"));
 		
-		//	collect CSS stylesheets and java scripts to load, and functions to execute on load and unload, and reqister moduls
+		//	collect CSS stylesheets and java scripts to load, and functions to execute on load and unload, and register modules
 		StringVector cssStylesheets = new StringVector();
 		StringVector javaScripts = new StringVector();
 		StringVector loadCalls = new StringVector();
 		StringVector unloadCalls = new StringVector();
 		for (int m = 0; m < this.clientModuls.length; m++) {
 			String css = this.clientModuls[m].getCssToInclude();
-			if (css != null) cssStylesheets.addElementIgnoreDuplicates(css);
+			if (css != null)
+				cssStylesheets.addElementIgnoreDuplicates(css);
 			
 			String[] jss = this.clientModuls[m].getJavaScriptsToInclude();
-			if (jss != null) javaScripts.addContent(jss);
+			if (jss != null)
+				javaScripts.addContent(jss);
 			
 			String[] lcs = this.clientModuls[m].getJavaScriptLoadCalls();
-			if (lcs != null) loadCalls.addContent(lcs);
+			if (lcs != null)
+				loadCalls.addContent(lcs);
 			
 			String[] ucs = this.clientModuls[m].getJavaScriptUnloadCalls();
-			if (ucs != null) unloadCalls.addContent(ucs);
+			if (ucs != null)
+				unloadCalls.addContent(ucs);
 			
 			this.clientModulsByName.put(this.clientModuls[m].getClass().getName(), this.clientModuls[m]);
 		}
 		
-		//	add own stylesheet
+		//	add own JavaScripts
+		String[] jsNames = super.getJavaScriptFiles();
+		if (jsNames != null)
+			javaScripts.addContentIgnoreDuplicates(jsNames);
+		
+		//	add own stylesheets
 		String[] cssNames = super.getCssStylesheets();
 		if (cssNames != null)
 			cssStylesheets.addContentIgnoreDuplicates(cssNames);
@@ -113,10 +131,6 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 		this.javaScriptsToInclude = javaScripts.toStringArray();
 		this.functionsToCallOnLoad = loadCalls.toStringArray();
 		this.functionsToCallOnUnload = unloadCalls.toStringArray();
-		
-		//	connect to host for session handling and register authentication provider
-		this.webAppHost = WebAppHost.getInstance(this.getServletContext());
-		this.webAppHost.addAuthenticationProvider(new AwcAuthProvider());
 	}
 	
 	private class AwcAuthProvider extends AuthenticationProvider {
@@ -145,7 +159,7 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			if ((userName == null) || (password == null))
 				return null;
 			
-			//	try authenticating agains backing server
+			//	try authenticating against backing server
 			AuthenticatedClient authClient = AuthenticatedClient.getAuthenticatedClient(serverConnection);
 			try {
 				if (authClient.login(userName, password)) {
@@ -526,8 +540,7 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			return null;
 		
 		//	check authentication
-		String userName = this.webAppHost.getUserName(request);
-		if (userName == null)
+		if (!this.webAppHost.isAuthenticated(request))
 			return this.webAppHost.getLoginPageBuilder(this, request, response, "includeBody", null);
 		
 		//	get modul name

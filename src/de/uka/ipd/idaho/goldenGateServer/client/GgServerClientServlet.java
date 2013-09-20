@@ -27,13 +27,8 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.client;
 
-import java.io.File;
-import java.util.TreeMap;
-
-import javax.servlet.Servlet;
 import javax.servlet.ServletException;
 
-import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.easyIO.web.HtmlServlet;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
 
@@ -64,35 +59,6 @@ import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
  */
 public abstract class GgServerClientServlet extends HtmlServlet implements GoldenGateServerConstants {
 	
-	private static TreeMap reinitializableInstancesByName = new TreeMap();
-	
-	/**
-	 * Retrieve the names of all instances of sub classes of this class. The
-	 * returned array is sorted lexicographically.
-	 * @return an array holding the names of all instances of sub classes of
-	 *         this class.
-	 */
-	public static String[] getReInitializableInstanceNames() {
-		return ((String[]) reinitializableInstancesByName.keySet().toArray(new String[reinitializableInstancesByName.size()]));
-	}
-	
-	/**
-	 * Re-initialize a specific servlet. This method is intended to facilitate
-	 * refreshing the configuration of individual servlets without having to
-	 * reload the entire web application or even restart the whole web server.
-	 * This is useful for ingesting modified configuration files, stylesheets,
-	 * etc. For security reasons, facilities invoking this method should be
-	 * protected by some sort of login mechanism.
-	 * @param servletName the name of the servlet to reinitialize
-	 * @throws ServletException
-	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet.ReInitializableServlet#reInit(Settings)
-	 */
-	public static void reInitialize(String servletName) throws ServletException {
-		GgServerClientServlet scs = ((GgServerClientServlet) reinitializableInstancesByName.get(servletName));
-		if ((scs != null) && (scs instanceof ReInitializableServlet))
-			((ReInitializableServlet) scs).reInit(scs.loadConfig());
-	}
-	
 	/**
 	 * a connection to the backing GoldenGATE server, created from serverAddress
 	 * and serverPort (for convenience)
@@ -105,7 +71,7 @@ public abstract class GgServerClientServlet extends HtmlServlet implements Golde
 	 * overwriting this method thus have to make the super call.
 	 * @see de.uka.ipd.idaho.easyIO.web.HtmlServlet#doInit()
 	 */
-	protected final void doInit() throws ServletException {
+	protected void doInit() throws ServletException {
 		super.doInit();
 		
 		//	get server access data
@@ -116,53 +82,5 @@ public abstract class GgServerClientServlet extends HtmlServlet implements Golde
 		if (serverPort == null)
 			this.serverConnection = ServerConnection.getServerConnection(serverAddress);
 		else this.serverConnection = ServerConnection.getServerConnection(serverAddress, Integer.parseInt(serverPort));
-		
-		//	initialize sub class
-		this.init(this.loadConfig());
-		
-		//	store in registry if no exception up to here
-		if (this instanceof ReInitializableServlet)
-			reinitializableInstancesByName.put(this.getServletName(), this);
-	}
-	private Settings loadConfig() {
-		String configFile = this.getInitParameter("configFile");
-		if (configFile == null) configFile = "config.cnfg";
-		return Settings.loadSettings(new File(this.dataFolder, configFile));
-	}
-	
-	/**
-	 * Do sub class specific initialization. This method is called after server
-	 * access is established. The argument settings object is the same as the
-	 * one referenced by the 'config' field of this class. This default
-	 * implementation does nothing, sub classes are welcome to overwrite it as
-	 * needed.
-	 * @param config a settings object containing the sub class specific
-	 *            settings from the servlet's config file
-	 */
-	protected void init(Settings config) {}
-	
-	
-	/**
-	 * Interface to implement for sub classes of GgServerClientServlet that want
-	 * to facilitate refreshing their configuration without having to reload the
-	 * entire web application or even restart the whole web server. This is
-	 * useful for ingesting modified configuration files, stylesheets, etc.
-	 * Servlets implementing this interface will have their name listed in the
-	 * array returned by the
-	 * GgServerClientServlet.getReInitializableInstanceNames() and will be
-	 * reinitializable by invoking GgServerClientServlet.reInititialize(String)
-	 * with their name as the argument.
-	 * 
-	 * @author sautter
-	 */
-	public static interface ReInitializableServlet extends Servlet {
-		
-		/**
-		 * Re-initialize the servlet. The configuration is loaded from the same
-		 * location as the one specified to the init(Settings) method.
-		 * @param config a settings object containing the sub class specific
-		 *            settings from the servlet's config file
-		 */
-		public abstract void reInit(Settings config);
 	}
 }

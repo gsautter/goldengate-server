@@ -31,11 +31,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 
+import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
 import de.uka.ipd.idaho.easyIO.settings.Settings;
-import de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet.ReInitializableServlet;
 import de.uka.ipd.idaho.htmlXmlUtil.accessories.HtmlPageBuilder;
 import de.uka.ipd.idaho.htmlXmlUtil.accessories.IoTools;
 
@@ -92,10 +92,8 @@ import de.uka.ipd.idaho.htmlXmlUtil.accessories.IoTools;
  * 
  * @author sautter
  */
-public class IndexServlet extends GgServerHtmlServlet implements ReInitializableServlet {
+public class IndexServlet extends GgServerHtmlServlet {
 	
-//	private String stylesheetUrl;
-//	
 	private String[] links = new String[0];
 	private HashMap linksByName = new HashMap();
 	
@@ -117,31 +115,28 @@ public class IndexServlet extends GgServerHtmlServlet implements ReInitializable
 	}
 	
 	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerHtmlServlet#init(de.uka.ipd.idaho.easyIO.settings.Settings)
+	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet#doInit()
 	 */
-	protected void init(Settings config) {
-		super.init(config);
-		this.reInit(config);
+	protected void doInit() throws ServletException {
+		super.doInit();
 		
 		//	initialize logging
-		GgServerWebFrontendLogger.setLogFolder(new File(this.rootFolder, "logs"));
+		GgServerWebFrontendLogger.setLogFolder(new File(this.webInfFolder, "logs"));
 	}
 	
 	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerClientServlet.ReInitializableServlet#reInit(de.uka.ipd.idaho.easyIO.settings.Settings)
+	 * @see de.uka.ipd.idaho.easyIO.web.HtmlServlet#reInit()
 	 */
-	public void reInit(Settings config) {
-//		
-//		//	load stylesheet location
-//		this.stylesheetUrl = config.getSetting("stylesheet");
+	protected void reInit() throws ServletException {
+		super.reInit();
 		
 		//	load link names & order
-		String linkNames = config.getSetting("links", "");
+		String linkNames = this.config.getSetting("links", "");
 		this.links = linkNames.split("\\s++");
 		
 		//	load links
 		for (int l = 0; l < this.links.length; l++) {
-			Settings linkSet = config.getSubset(this.links[l]);
+			Settings linkSet = this.config.getSubset(this.links[l]);
 			String linkUrl = linkSet.getSetting("address");
 			String linkLabel = linkSet.getSetting("label");
 			if ((linkUrl != null) && (linkLabel != null))
@@ -149,14 +144,6 @@ public class IndexServlet extends GgServerHtmlServlet implements ReInitializable
 		}
 	}
 	
-//	/* (non-Javadoc)
-//	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerHtmlServlet#getCssStylesheets()
-//	 */
-//	public String[] getCssStylesheets() {
-//		String[] stylesheets = {this.stylesheetUrl};
-//		return stylesheets;
-//	}
-//	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.client.GgServerHtmlServlet#getPageBuilder(javax.servlet.http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
 	 */
@@ -221,11 +208,6 @@ public class IndexServlet extends GgServerHtmlServlet implements ReInitializable
 								linkUrl = linkUrl.replaceAll("\\/\\.\\/", "/");
 							} while (linkUrl.length() < linkUrlLength);
 							linkUrl = linkUrl.replaceAll("\\:\\/", "://");
-//							if (linkUrl.indexOf("<path>") != -1) {
-//								String protocol = linkUrl.substring(0, linkUrl.indexOf("<path>"));
-//								linkUrl = linkUrl.substring(linkUrl.indexOf("<path>") + "<path>".length());
-//								linkUrl = (protocol + this.request.getServerName() + this.request.getContextPath() + linkUrl);
-//							}
 						}
 						linkTag = ("<a" +
 								" href=\"" + linkUrl + "\"" + 
@@ -238,7 +220,6 @@ public class IndexServlet extends GgServerHtmlServlet implements ReInitializable
 					if (link.icon != null) {
 						iconUrl = link.icon;
 						if (iconUrl.indexOf("://") == -1)
-//							iconUrl = (request.getContextPath() + dataPath + "/" + iconUrl);
 							iconUrl = (request.getContextPath() + getRelativeDataPath() + "/" + iconUrl);
 					}
 					
@@ -289,42 +270,5 @@ public class IndexServlet extends GgServerHtmlServlet implements ReInitializable
 			this.writeLine("</table>");
 			this.writeLine("</div>");
 		}
-		
-		/*
-<div class="linkBox">
-<table class="linkTable">
-<tr>
-
-<td>
-<a href="test">
-<span class="linkIcon">
-<img class="linkIconImage" src="">
-</span>
-</a>
-</td>
-
-<td>
-<a href="test">
-<span class="linkLabel">
-Label
-</span>
-</a>
-
-<br>
-
-<span class="linkDescription">
-This is the description
-</span>
-</td>
-
-</tr>
-
-<tr>
-<td><a href="test"><span class="linkIcon"><img class="linkIconImage" src=""></span></a></td>
-<td><a href="test"><span class="linkLabel">Label</span></a><br><span class="linkDescription">This is<br>the description</span></td>
-</tr>
-</table>
-</div>
-		 */
 	}
 }
