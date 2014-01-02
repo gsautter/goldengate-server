@@ -84,7 +84,6 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.easyIO.web.HtmlServlet#reInit()
 	 */
-	@Override
 	protected void reInit() throws ServletException {
 		super.reInit();
 		
@@ -146,7 +145,8 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			//	session exists, check if we authenticated it
 			if (session != null) {
 				AuthenticatedClient authClient = getAuthenticatedClient(session);
-				return ((authClient == null) ? null : authClient.getUserName());
+				if (authClient != null)
+					return authClient.getUserName();
 			}
 			
 			//	get login parameters
@@ -335,8 +335,8 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			pageBuilder.writeLine("  var cpfr = document.getElementById('" + this.getName() + "_ChangePasswordFrame');");
 			pageBuilder.writeLine("  var cpfo = cpfr.contentWindow.document.getElementById('changePwdForm');");
 			pageBuilder.writeLine("  if (cpfo == null) {");
-			pageBuilder.writeLine("    if (cpfr.src != '" + pageBuilder.request.getContextPath() + pageBuilder.request.getServletPath() + "/webAppAuthProvider/form" + "')");
-			pageBuilder.writeLine("      cpfr.src = '" + pageBuilder.request.getContextPath() + pageBuilder.request.getServletPath() + "/webAppAuthProvider/form" + "';");
+			pageBuilder.writeLine("    if (cpfr.src != '" + pageBuilder.request.getContextPath() + pageBuilder.request.getServletPath() + "/webAppAuthProvider/changePwdForm" + "')");
+			pageBuilder.writeLine("      cpfr.src = '" + pageBuilder.request.getContextPath() + pageBuilder.request.getServletPath() + "/webAppAuthProvider/changePwdForm" + "';");
 			pageBuilder.writeLine("    window.setTimeout('" + this.getName() + "_doChangePassword()', 100);");
 			pageBuilder.writeLine("    return false;");
 			pageBuilder.writeLine("  }");
@@ -409,7 +409,7 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 				return false;
 			
 			//	request for form
-			if (pathInfo.endsWith("/form")) {
+			if (pathInfo.endsWith("/changePwdForm")) {
 				response.setContentType("text/html");
 				response.setCharacterEncoding("UTF-8");
 				BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), "UTF-8"));
@@ -428,7 +428,7 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			if (pathInfo.endsWith("/changePwd")) {
 				String message = "";
 				
-				//	get authenticated cleint
+				//	get authenticated client
 				AuthenticatedClient authClient = getAuthenticatedClient(request.getSession(false));
 				if (authClient == null)
 					message = ("You are not authenticated against " + this.getLabel());
