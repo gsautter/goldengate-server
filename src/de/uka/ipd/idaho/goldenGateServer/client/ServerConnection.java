@@ -28,8 +28,6 @@
 package de.uka.ipd.idaho.goldenGateServer.client;
 
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -46,6 +44,8 @@ import java.util.LinkedList;
 import java.util.Map;
 
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineInputStream;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineOutputStream;
 
 /**
  * Factory for generic connections to the backing server, producing Connection
@@ -64,13 +64,12 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	 * @author sautter
 	 */
 	public abstract static class Connection {
-		
-		/** the writer for sending request data */
-		private BufferedOutputStream bos;
+//		private BufferedOutputStream bos;
+		private BufferedLineOutputStream blos;
 		private BufferedWriter bw;
 		
-		/** the reader for receiving the response */
-		private BufferedInputStream bis;
+//		private BufferedInputStream bis;
+		private BufferedLineInputStream blis;
 		private BufferedReader br;
 		
 		/**
@@ -78,6 +77,20 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		 * @return an InputStream for the underlying connection
 		 */
 		protected abstract InputStream produceInputStream() throws IOException;
+//		
+//		/**
+//		 * Retrieve an InputStream for reading data from this connection.
+//		 * If this connection is based on a URL, this method should not be
+//		 * invoked before all output is written. Using both the Reader
+//		 * returned by getReader() and the InputStream returned by this method
+//		 * may cause errors.
+//		 * @return an InputStream for reading data from this connection
+//		 */
+//		public InputStream getInputStream() throws IOException {
+//			if (this.bis == null)
+//				this.bis = new BufferedInputStream(this.produceInputStream());
+//			return this.bis;
+//		}
 		
 		/**
 		 * Retrieve an InputStream for reading data from this connection.
@@ -87,10 +100,10 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		 * may cause errors.
 		 * @return an InputStream for reading data from this connection
 		 */
-		public InputStream getInputStream() throws IOException {
-			if (this.bis == null)
-				this.bis = new BufferedInputStream(this.produceInputStream());
-			return this.bis;
+		public BufferedLineInputStream getInputStream() throws IOException {
+			if (this.blis == null)
+				this.blis = new BufferedLineInputStream(this.produceInputStream(), ENCODING);
+			return this.blis;
 		}
 		
 		/**
@@ -114,6 +127,21 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		 * @return an OutputStream for the underlying connection
 		 */
 		protected abstract OutputStream produceOutputStream() throws IOException;
+//		
+//		/**
+//		 * Retrieve an OutputStream for writing data to this connection. If this
+//		 * connection is based on a URL, writing data to the OutputStream
+//		 * returned by this method might not work any more after
+//		 * getInputStream() or getReader() has been invoked. Using both the
+//		 * Writer returned by getWriter() and the OutputStream returned by this
+//		 * method may cause errors.
+//		 * @return an OutputStream for writing data to this connection
+//		 */
+//		public OutputStream getOutputStream() throws IOException {
+//			if (this.bos == null)
+//				this.bos = new BufferedOutputStream(this.produceOutputStream());
+//			return this.bos;
+//		}
 		
 		/**
 		 * Retrieve an OutputStream for writing data to this connection. If this
@@ -124,10 +152,10 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		 * method may cause errors.
 		 * @return an OutputStream for writing data to this connection
 		 */
-		public OutputStream getOutputStream() throws IOException {
-			if (this.bos == null)
-				this.bos = new BufferedOutputStream(this.produceOutputStream());
-			return this.bos;
+		public BufferedLineOutputStream getOutputStream() throws IOException {
+			if (this.blos == null)
+				this.blos = new BufferedLineOutputStream(this.produceOutputStream(), ENCODING);
+			return this.blos;
 		}
 		
 		/**
@@ -154,13 +182,17 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		public void close() throws IOException {
 			if (this.bw != null)
 				this.bw.close();
-			else if (this.bos != null)
-				this.bos.close();
+//			else if (this.bos != null)
+//				this.bos.close();
+			else if (this.blos != null)
+				this.blos.close();
 			
 			if (this.br != null)
 				this.br.close();
-			else if (this.bis != null)
-				this.bis.close();
+//			else if (this.bis != null)
+//				this.bis.close();
+			else if (this.blis != null)
+				this.blis.close();
 		}
 	}
 	

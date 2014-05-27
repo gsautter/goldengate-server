@@ -33,6 +33,9 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
 
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineInputStream;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineOutputStream;
+
 /**
  * A server component to run in the Server Component Framework, either inside a
  * GoldenGateServerServlet, or inside the GoldenGateServer. The main purpose for a
@@ -118,6 +121,23 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		public abstract String getActionCommand();
 	}
 	
+//	/**
+//	 * An action to perform on the server component. Implementations of this
+//	 * interface expose specific functions to network access, getting their
+//	 * input from a BufferedReader and sending their output to a BufferedWriter.
+//	 * 
+//	 * @author sautter
+//	 */
+//	public interface ComponentActionNetwork extends ComponentAction {
+//		
+//		/** perform the actual action with invocation over the network
+//		 * @param	input	the Reader to retrieve input from
+//		 * @param	output	the Writer to write output to
+//		 * @throws IOException
+//		 */
+//		public abstract void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException;
+//	}
+//	
 	/**
 	 * An action to perform on the server component. Implementations of this
 	 * interface expose specific functions to network access, getting their
@@ -125,14 +145,29 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 	 * 
 	 * @author sautter
 	 */
-	public interface ComponentActionNetwork extends ComponentAction {
+	public abstract class ComponentActionNetwork implements ComponentAction {
 		
-		/** perform the actual action with invocation over the network
+		/**
+		 * Perform the actual action with invocation over the network. This
+		 * default implementation wraps the argument streams in writers and
+		 * loops them through to the writer based method, which is good for
+		 * handling character based data. Sub classes handling binary data are
+		 * welcome to overwrite this method, though.
+		 * @param	input	the stream to retrieve input from
+		 * @param	output	the stream to write output to
+		 * @throws IOException
+		 */
+		public void performActionNetwork(BufferedLineInputStream input, BufferedLineOutputStream output) throws IOException {
+			this.performActionNetwork(input.toReader(), output.toWriter());
+		}
+		
+		/**
+		 * Perform the actual action with invocation over the network.
 		 * @param	input	the Reader to retrieve input from
 		 * @param	output	the Writer to write output to
 		 * @throws IOException
 		 */
-		public abstract void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException;
+		public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {}
 	}
 	
 	/**
@@ -149,13 +184,22 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		 * @param	arguments	an array holding the arguments for the action
 		 */
 		public abstract void performActionConsole(String[] arguments);
-
+		
 		/**
 		 * @return an array holding individual lines of an explanation text for
 		 *         this action, e.g. details on parameters
 		 */
 		public abstract String[] getExplanation();
 	}
+//	
+//	/**
+//	 * An action to perform on the server component. This interface exists to
+//	 * offer a convenient way of implementing both network and console access in
+//	 * a single anonymous class.
+//	 * 
+//	 * @author sautter
+//	 */
+//	public interface ComponentActionFull extends ComponentActionNetwork, ComponentActionConsole {}
 	
 	/**
 	 * An action to perform on the server component. This interface exists to
@@ -164,7 +208,7 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 	 * 
 	 * @author sautter
 	 */
-	public interface ComponentActionFull extends ComponentActionNetwork, ComponentActionConsole {}
+	public abstract class ComponentActionFull extends ComponentActionNetwork implements ComponentActionConsole {}
 	
 	/**
 	 * @return an array holding all the actions that can be performed on this

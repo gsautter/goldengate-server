@@ -28,13 +28,10 @@
 package de.uka.ipd.idaho.goldenGateServer;
 
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -51,6 +48,8 @@ import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentAction;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActionNetwork;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineInputStream;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineOutputStream;
 
 /**
  * A servlet for exposing a GoldenGateServerComponent via HTTP from inside a
@@ -234,8 +233,10 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		this.writeLogEntry("Handling request from " + request.getRemoteAddr());
 		
 		//	create reader & writer
-		BufferedReader requestReader = new BufferedReader(new InputStreamReader(request.getInputStream(), ENCODING));
-		BufferedWriter responseWriter = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), ENCODING));
+//		BufferedReader requestReader = new BufferedReader(new InputStreamReader(request.getInputStream(), ENCODING));
+//		BufferedWriter responseWriter = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), ENCODING));
+		BufferedLineInputStream requestReader = new BufferedLineInputStream(request.getInputStream(), ENCODING);
+		BufferedLineOutputStream responseWriter = new BufferedLineOutputStream(response.getOutputStream(), ENCODING);
 		
 		//	read command
 		String command = requestReader.readLine();

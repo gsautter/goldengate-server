@@ -29,13 +29,11 @@ package de.uka.ipd.idaho.goldenGateServer;
 
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.io.PrintStream;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -57,6 +55,8 @@ import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentAction;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActionConsole;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActionNetwork;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineInputStream;
+import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineOutputStream;
 import de.uka.ipd.idaho.stringUtils.StringVector;
 
 /**
@@ -141,7 +141,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		
 		//	open console (command line) interface
 		if (isDeamon) {
-			System.out.println(" - staring as deamon:");
+			System.out.println(" - starting as deamon:");
 			
 			int ncPort = 15808;
 			try {
@@ -184,7 +184,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			System.out.println("   - System.err forked");
 		}
 		else {
-			System.out.println(" - staring in command shell:");
+			System.out.println(" - starting in command shell:");
 			
 			console = new SystemInConsole(System.out);
 			System.out.println("   - console created");
@@ -282,7 +282,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		GoldenGateServerComponent[] loadedServerComponents = GoldenGateServerComponentLoader.loadServerComponents(new File(rootFolder, COMPONENT_FOLDER_NAME));
 		System.out.println("   - components loaded");
 		
-		//	initailize and register components
+		//	initialize and register components
 		ArrayList serverComponentList = new ArrayList();
 		ArrayList serverComponentLoadErrorList = new ArrayList();
 		for (int c = 0; c < loadedServerComponents.length; c++)
@@ -346,7 +346,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		loadedServerComponents = ((GoldenGateServerComponent[]) serverComponentList.toArray(new GoldenGateServerComponent[serverComponentList.size()]));
 		serverComponentList.clear();
 		
-		//	link components
+		//	link initialize components
 		for (int c = 0; c < loadedServerComponents.length; c++)
 			try {
 				System.out.println("   - linked initializing " + loadedServerComponents[c].getLetterCode());
@@ -509,8 +509,10 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					socket.setSoTimeout(networkInterfaceTimeout);
 					
 					//	create reader & writer
-					final BufferedReader requestReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), ENCODING));
-					final BufferedWriter responseWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), ENCODING));
+//					final BufferedReader requestReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), ENCODING));
+//					final BufferedWriter responseWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), ENCODING));
+					final BufferedLineInputStream requestIn = new BufferedLineInputStream(socket.getInputStream(), ENCODING);
+					final BufferedLineOutputStream responseOut = new BufferedLineOutputStream(socket.getOutputStream(), ENCODING);
 					
 					System.out.println(LOG_TIMESTAMP_FORMATTER.format(new Date()) + ": Handling request from " + socket.getRemoteSocketAddress());
 					
@@ -518,10 +520,10 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					
 					//	stopping or stopped, report error
 					if (st == null) {
-						responseWriter.write("Cannot process request, server is stopped");
-						responseWriter.newLine();
+						responseOut.write("Cannot process request, server is stopped");
+						responseOut.newLine();
 						
-						responseWriter.flush();
+						responseOut.flush();
 						socket.close();
 					}
 					
@@ -530,7 +532,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 						public void run() {
 							try {
 								//	read command
-								String command = requestReader.readLine();
+								String command = requestIn.readLine();
 								System.out.println("Command is " + command);
 								
 								//	catch 'PROXIED' property
@@ -538,7 +540,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 									synchronized (proxiedServiceThreadIDs) {
 										proxiedServiceThreadIDs.add(new Long(Thread.currentThread().getId()));
 									}
-									command = requestReader.readLine();
+									command = requestIn.readLine();
 									System.out.println("Command is " + command);
 								}
 								
@@ -547,16 +549,16 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 								
 								//	invalid action, send error
 								if (action == null) {
-									responseWriter.write("Invalid action '" + command + "'");
-									responseWriter.newLine();
+									responseOut.write("Invalid action '" + command + "'");
+									responseOut.newLine();
 								}
 								
 								//	action found
-								else action.performActionNetwork(requestReader, responseWriter);
+								else action.performActionNetwork(requestIn, responseOut);
 								
 								//	send response
-								responseWriter.flush();
-								responseWriter.close();
+								responseOut.flush();
+								responseOut.close();
 							}
 							catch (Exception e) {
 								System.out.println("Error handling request - " + e.getMessage());

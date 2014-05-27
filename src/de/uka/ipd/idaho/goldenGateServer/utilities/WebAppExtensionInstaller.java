@@ -143,6 +143,7 @@ public class WebAppExtensionInstaller {
 				}
 				ignoreFileNames.add(Pattern.compile(ifnRegEx.toString(), Pattern.CASE_INSENSITIVE));
 			}
+			ifnBr.close();
 		} catch (IOException ioe) {}
 		
 		//	store original web.xml and web.cnfg

@@ -141,9 +141,8 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	public final void exit() {
 		this.exitComponent();
 		
-		File setFile = new File(this.dataPath, this.configurationFileName);
-		try {
-			this.configuration.storeAsText(setFile);
+		if (this.configuration.isDirty()) try {
+			this.configuration.storeAsText(new File(this.dataPath, this.configurationFileName));
 		}
 		catch (IOException ioe) {
 			ioe.printStackTrace();
@@ -153,7 +152,7 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	/**
 	 * shit down the server component further. This method replaces exit(),
 	 * which is final because it stores the component's configuration, calling
-	 * this method before docing so. This default implementation does nothing,
+	 * this method before doing so. This default implementation does nothing,
 	 * so sub classes may overwrite it as needed.
 	 */
 	protected void exitComponent() {}

@@ -93,7 +93,7 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		//	get and check database connection
 		this.io = this.host.getIoProvider();
 		if (!this.io.isJdbcAvailable())
-			throw new RuntimeException("User Access Authority cannot work without database access.");
+			throw new RuntimeException("GgServerUPS cannot work without database access.");
 		
 		//	ensure user -> role table
 		TableDefinition urTd = new TableDefinition(USER_ROLE_TABLE_NAME);
@@ -500,7 +500,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 	private static final String IMPLY_ROLE_COMMAND = "implyRole";
 	private static final String UNIMPLY_ROLE_COMMAND = "unimplyRole";
 	
-	private abstract class ListAction implements ComponentActionNetwork {
+//	private abstract class ListAction implements ComponentActionNetwork {
+	private abstract class ListAction extends ComponentActionNetwork {
 		private String actionCommand;
 		ListAction(String actionCommand) {
 			this.actionCommand = actionCommand;
@@ -547,7 +548,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		abstract String[] getList() throws IOException;
 	}
 	
-	private abstract class GetRolesOrPermissionsAction implements ComponentActionNetwork {
+//	private abstract class GetRolesOrPermissionsAction implements ComponentActionNetwork {
+	private abstract class GetRolesOrPermissionsAction extends ComponentActionNetwork {
 		private String actionCommand;
 		GetRolesOrPermissionsAction(String actionCommand) {
 			this.actionCommand = actionCommand;
@@ -597,7 +599,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		abstract String[] getRolesOrPermissions(String userOrRoleName) throws IOException;
 	}
 	
-	private abstract class ModifyRolesOrPermissionsAction implements ComponentActionNetwork {
+//	private abstract class ModifyRolesOrPermissionsAction implements ComponentActionNetwork {
+	private abstract class ModifyRolesOrPermissionsAction extends ComponentActionNetwork {
 		private String actionCommand;
 		ModifyRolesOrPermissionsAction(String actionCommand) {
 			this.actionCommand = actionCommand;
@@ -1253,7 +1256,7 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 			SqlQueryResult sqr = this.io.executeSelectQuery(query);
 			User user = new User(userName);
 			while (sqr.next())
-				user.roles.add(sqr.getString(1));
+				user.roles.add(sqr.getString(0));
 			return user;
 		}
 		catch (SQLException sqle) {

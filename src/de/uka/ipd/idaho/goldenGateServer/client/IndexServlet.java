@@ -131,7 +131,7 @@ public class IndexServlet extends GgServerHtmlServlet {
 		super.reInit();
 		
 		//	load link names & order
-		String linkNames = this.config.getSetting("links", "");
+		String linkNames = this.getSetting("links", "");
 		this.links = linkNames.split("\\s++");
 		
 		//	load links

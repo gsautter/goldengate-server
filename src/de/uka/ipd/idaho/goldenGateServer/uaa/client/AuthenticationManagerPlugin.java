@@ -32,6 +32,13 @@ import java.awt.event.ActionListener;
 
 import javax.swing.JMenuItem;
 
+import de.uka.ipd.idaho.gamta.Annotation;
+import de.uka.ipd.idaho.gamta.util.gPath.GPath;
+import de.uka.ipd.idaho.gamta.util.gPath.GPathFunction;
+import de.uka.ipd.idaho.gamta.util.gPath.exceptions.GPathException;
+import de.uka.ipd.idaho.gamta.util.gPath.exceptions.InvalidArgumentsException;
+import de.uka.ipd.idaho.gamta.util.gPath.types.GPathObject;
+import de.uka.ipd.idaho.gamta.util.gPath.types.GPathString;
 import de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin;
 import de.uka.ipd.idaho.goldenGate.plugins.ResourceManager;
 import de.uka.ipd.idaho.goldenGate.plugins.SettingsPanel;
@@ -103,6 +110,16 @@ public class AuthenticationManagerPlugin extends AbstractGoldenGatePlugin implem
 		//	initialize authentication manager if not done before
 		if (!AuthenticationManager.isInitialized())
 			AuthenticationManager.initialize(this.dataProvider);
+		
+		//	make user name available to GPath expressions
+		GPath.addFunction("ggServerUserName", new GPathFunction() {
+			public GPathObject execute(Annotation contextAnnotation, int contextPosition, int contextSize, GPathObject[] args) throws GPathException {
+				if (args.length != 0)
+					throw new InvalidArgumentsException("The function 'ggServerUserName' requires 0 arguments.");
+				String userName = AuthenticationManager.getUser();
+				return new GPathString((userName == null) ? "" : userName);
+			}
+		});
 	}
 	
 	/** @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getSettingsPanel()
