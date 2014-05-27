@@ -5,14 +5,14 @@
 -->
 
 <project name="dist">
-	<target name="zips" depends="backendzip,frontendzip,authmanager,datauploaderzip">
+	<target name="zips" depends="backendzip,frontendzip,serverclient,authmanager,datauploaderzip">
 	</target>
 	
 	<target name="backendzip" depends="serverjar,serverconsolejar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
 		<delete file="${app.server}"/>
 		<zip destfile="${app.server}">
 			<fileset dir="${file.home}/server"/>
-			<fileset dir="${dist.home}/Components" includes="Installer.jar"/>
+			<fileset dir="${dist.home}" includes="Installer.jar"/>
 			<fileset dir="${dist.home}" includes="GgServer.jar"/>
 			<fileset dir="${dist.home}" includes="GgServerConsole.jar"/>
 			<fileset dir="${dist.home}" includes="Components/**.jar" excludes="Components/Installer.jar" />
@@ -127,8 +127,8 @@
 		<delete file="${app.webfrontend}" />
 		<zip destfile="${app.webfrontend}">
 			<fileset dir="${file.home}/webapp" />
-			<fileset dir="${dist.home}" includes="**/WEB-INF/**" excludes="WEB-INF/Installer.jar"/>
-			<fileset dir="${dist.home}/WEB-INF" includes="Installer.jar" />
+			<fileset dir="${dist.home}" includes="**/WEB-INF/**" />
+			<fileset dir="${dist.home}" includes="Extender.jar" />
 			<fileset dir="." includes="LICENSE.txt"/>
 		</zip>
 	</target>
@@ -140,14 +140,16 @@
 				<include name="**/goldenGateServer/GoldenGateServerConstants*.class" />
 				<include name="**/goldenGateServer/GoldenGateServerEventService*.class" />
 				<include name="**/goldenGateServer/client/*.class" />
-				<include name="**/goldenGateServer/util/Base64*.class" />
+				<include name="**/goldenGateServer/util/*.class" />
+				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction*.class" />
 				<include name="**/goldenGateServer/utilities/DownloadServlet*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
 				<include name="**/goldenGateServer/GoldenGateServerEventService.java" />
 				<include name="**/goldenGateServer/client/*.java" />
-				<include name="**/goldenGateServer/util/Base64*.java" />
+				<include name="**/goldenGateServer/util/*.java" />
+				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction.java" />
 				<include name="**/goldenGateServer/utilities/DownloadServlet.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
@@ -237,20 +239,35 @@
 	<target name="check-gg" unless="gg.exists">
 		<available property="gg.exists" file="lib/GoldenGATE.jar"/>
 	</target>
+	<target name="serverclient" depends="check-gg" if="${gg.exists}">
+		<delete file="${jar.serverclient}" />
+		<jar destfile="${jar.serverclient}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/GoldenGateServerConstants*.class" />
+				<include name="**/goldenGateServer/client/ServerConnection*.class" />
+				<include name="**/goldenGateServer/util/*.class" />
+				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
+				<include name="**/goldenGateServer/client/ServerConnection.java" />
+				<include name="**/goldenGateServer/util/*.java" />
+				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
 	<target name="authmanager" depends="check-gg" if="${gg.exists}">
 		<delete file="${jar.authmanager}" />
 		<jar destfile="${jar.authmanager}" manifest="${file.home}/MANIFEST.components.MF">
 			<fileset dir="${build.home}/classes">
-				<include name="**/goldenGateServer/GoldenGateServerConstants*.class" />
-				<include name="**/goldenGateServer/client/ServerConnection*.class" />
 				<include name="**/goldenGateServer/uaa/UserAccessAuthorityConstants*.class" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticatedClient*.class" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticationManager*.class" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticationManagerPlugin*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
-				<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
-				<include name="**/goldenGateServer/client/ServerConnection.java" />
 				<include name="**/goldenGateServer/uaa/UserAccessAuthorityConstants.java" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticatedClient.java" />
 				<include name="**/goldenGateServer/uaa/client/AuthenticationManager.java" />
