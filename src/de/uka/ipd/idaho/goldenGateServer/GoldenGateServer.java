@@ -382,6 +382,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		//	obtain component's console actions
 		for (int c = 0; c < serverComponents.length; c++) {
 			String componentLetterCode = serverComponents[c].getLetterCode();
+			System.out.println("   - getting actions from " + componentLetterCode);
 			ComponentAction[] componentActions = serverComponents[c].getActions();
 			
 			HashMap componentActionSet = new HashMap();
@@ -396,6 +397,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			
 			if (componentActionSet.size() != 0)
 				componentActionSetsByLetterCode.put(componentLetterCode, componentActionSet);
+			System.out.println("   - actions from " + componentLetterCode + " integrated");
 		}
 		System.out.println("   - components integrated in network and console interfaces");
 		

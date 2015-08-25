@@ -207,7 +207,7 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	
 	/**
 	 * @return a hash code for the server connection, using the result of
-	 *         toString() as the basis for the hast. This is in order to have
+	 *         toString() as the basis for the host. This is in order to have
 	 *         connections for the same remote address return the same hash
 	 *         code, which facilitates pooling server connections.
 	 * @see java.lang.Object#hashCode()
@@ -218,7 +218,7 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	
 	/**
 	 * @return a string representation of this server connection, which should
-	 *         uniqely identify where this connection goes to. A URL based
+	 *         uniquely identify where this connection goes to. A URL based
 	 *         server connection, for instance might return the URL string.
 	 * @see java.lang.Object#toString()
 	 */
@@ -358,9 +358,8 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	public Connection getConnection() throws IOException {
 		if (connectorService == null)
 			return this.produceConnection();
-		
 		else {
-			if (DEBUG) System.out.println("SCon: producing connection asynchronously ...");
+			if (DEBUG) System.out.println("ServerConnection: producing connection asynchronously ...");
 			ConnectionRequest cr = new ConnectionRequest(this);
 			if (DEBUG) System.out.println("  request created");
 			return cr.getConnection();
@@ -377,8 +376,8 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	
 	/**
 	 * Test whether or not the Connections returned by this ServerConnections
-	 * are plain socket connections, or something else, eg tunneled through
-	 * HTTP. This gives a hint towards wherther or not the connections can time
+	 * are plain socket connections, or something else, e.g. tunneled through
+	 * HTTP. This gives a hint towards whether or not the connections can time
 	 * out somewhere between client and server.
 	 * @return true if the Connections returned by this ServerConnections are
 	 *         plain socket connections, false otherwise
@@ -388,17 +387,19 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	//	connection pool to make server connections singletons for each remote address
 	private static Map serverConnectionPool = Collections.synchronizedMap(new HashMap());
 	
-	/** obtain a ServerConnection for communication over Sockets with some host on some port 
-	 * @param	host	the host to communicate with
-	 * @param	port	the port to use for communication
-	 * @return a ServerConnection for communication over Sockets with the specified host on the specified port 
+	/**
+	 * Obtain a ServerConnection for communication over Sockets with some host
+	 * on some port 
+	 * @param host the host to communicate with
+	 * @param port the port to use for communication
+	 * @return the server connection 
 	 */
 	public static ServerConnection getServerConnection(final String host, final int port) {
 		ServerConnection con = ((ServerConnection) serverConnectionPool.get(host + ":" + port));
 		if (con == null) {
 			con = new ServerConnection() {
 				protected Connection produceConnection() throws IOException {
-					System.out.println("ServerConnection: connecting to " + host + " on port " + port);
+					if (DEBUG) System.out.println("ServerConnection: connecting to " + host + " on port " + port);
 					final Socket sock = new Socket(host, port);
 					return new Connection() {
 						protected InputStream produceInputStream() throws IOException {
@@ -421,16 +422,18 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		return con;
 	}
 	
-	/** obtain a ServerConnection for communication over http with some server identified by a URL
-	 * @param	url		the URL to communicate with (as a String)
-	 * @return a ServerConnection for communication over http with the server identified by the specified URL
+	/**
+	 * Obtain a ServerConnection for communication over HTTP with some server
+	 * identified by a URL.
+	 * @param url the URL to communicate with (as a String)
+	 * @return the server connection
 	 */
 	public static ServerConnection getServerConnection(final String url) {
 		ServerConnection con = ((ServerConnection) serverConnectionPool.get(url));
 		if (con == null) {
 			con = new ServerConnection() {
 				protected Connection produceConnection() throws IOException {
-					System.out.println("ServerConnection: connecting to " + url);
+					if (DEBUG) System.out.println("ServerConnection: connecting to " + url);
 					final HttpURLConnection con = ((HttpURLConnection) (new URL(url)).openConnection());
 					con.setDoOutput(true);
 					con.setDoInput(true);
@@ -458,9 +461,11 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		return con;
 	}
 	
-	/** obtain a ServerConnection for communication over http with some server identified by a URL
-	 * @param	url		the URL to communicate with
-	 * @return a ServerConnection for communication over http with the server identified by the specified URL
+	/**
+	 * Obtain a ServerConnection for communication over HTTP with some server
+	 * identified by a URL
+	 * @param url the URL to communicate with
+	 * @return the server connection
 	 */
 	public static ServerConnection getServerConnection(URL url) {
 		return getServerConnection(url.toString()); // have to use Strings so there can be a new URL object for every new connection

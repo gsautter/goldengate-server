@@ -158,7 +158,10 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		 * @throws IOException
 		 */
 		public void performActionNetwork(BufferedLineInputStream input, BufferedLineOutputStream output) throws IOException {
-			this.performActionNetwork(input.toReader(), output.toWriter());
+			BufferedReader inputBr = input.toReader();
+			BufferedWriter outputBw = output.toWriter();
+			this.performActionNetwork(inputBr, outputBw);
+			outputBw.flush();
 		}
 		
 		/**

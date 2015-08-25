@@ -72,8 +72,8 @@ public class GoldenGateServerEventService implements GoldenGateServerConstants {
 	 * class names of the listeners currently in the process of notification.
 	 * This is to make sure that if notification triggers another write access
 	 * to the document storage, all the listeners involved in the chain of
-	 * invokation of that second write action do not receive notification of the
-	 * latter, thus avoiding triggering a second circular invokation.
+	 * invocation of that second write action do not receive notification of the
+	 * latter, thus avoiding triggering a second circular invocation.
 	 */
 	private static Map notifyingListenersByThreadID = Collections.synchronizedMap(new HashMap());
 	private static final boolean DEBUG_NOTIFY = false;
@@ -95,7 +95,7 @@ public class GoldenGateServerEventService implements GoldenGateServerConstants {
 		
 		//	notify listeners not already in chain of notification
 		for (Iterator it = listeners.iterator(); it.hasNext();) {
-			GoldenGateServerEventListener gsel =((GoldenGateServerEventListener) it.next());
+			GoldenGateServerEventListener gsel = ((GoldenGateServerEventListener) it.next());
 			if (DEBUG_NOTIFY) System.out.println("  - listener is " + gsel.getClass().getName());
 			if (notifyingListeners.add(gsel.getClass().getName())) {
 				try {

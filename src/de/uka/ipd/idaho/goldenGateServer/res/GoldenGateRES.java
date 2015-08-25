@@ -76,6 +76,11 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
   - and protected method doDiff(RemoteEventList rel) --> void (default implementation throwing UnsupportedOperationException) 
 	 */
 	
+	/* TODO implement getTimeDifference(String remoteDomainAlias) method
+	 * - compares server clocks
+	 * - helps put event timestamp differences into proportion
+	 */
+	
 	private static final String GET_EVENTS = "RES_GET_EVENTS";
 	
 	private static final String GET_DOMAIN_NAME = "RES_GET_DOMAIN_NAME";

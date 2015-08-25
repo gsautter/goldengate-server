@@ -66,8 +66,7 @@ public class BufferedLineOutputStream extends BufferedOutputStream {
 	
 	/**
 	 * Write a line break. This method writes cross platform line breaks, i.e.,
-	 * a carriage return ('\r') and subsequently a line newline character
-	 * ('\n').
+	 * a carriage return ('\r') and subsequently a newline character ('\n').
 	 * @throws IOException
 	 */
 	public void newLine() throws IOException {
@@ -88,26 +87,26 @@ public class BufferedLineOutputStream extends BufferedOutputStream {
 		this.newLine();
 	}
 	
-	/* (non-Javadoc)
-	 * @see java.io.BufferedOutputStream#flush()
-	 */
-	public synchronized void flush() throws IOException {
-		if (this.writer != null)
-			this.writer.flush();
-		super.flush();
-	}
-	
-	/* (non-Javadoc)
-	 * @see java.io.FilterOutputStream#close()
-	 */
-	public void close() throws IOException {
-		if (this.writer != null) {
-			this.writer.flush();
-			this.writer.close();
-		}
-		else super.close();
-	}
-	
+//	/* (non-Javadoc)
+//	 * @see java.io.BufferedOutputStream#flush()
+//	 */
+//	public synchronized void flush() throws IOException {
+//		if (this.writer != null)
+//			this.writer.flush();
+//		else super.flush();
+//	}
+//	
+//	/* (non-Javadoc)
+//	 * @see java.io.FilterOutputStream#close()
+//	 */
+//	public void close() throws IOException {
+//		if (this.writer != null) {
+//			this.writer.flush();
+//			this.writer.close();
+//		}
+//		else super.close();
+//	}
+//	
 	/**
 	 * Wrap the output stream in an actual writer, using the encoding handed to
 	 * the constructor. The stream proper should not be written to by client
