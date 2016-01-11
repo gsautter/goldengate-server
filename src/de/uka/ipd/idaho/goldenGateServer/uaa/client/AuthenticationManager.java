@@ -324,13 +324,13 @@ public class AuthenticationManager {
 		
 		//	log out
 		logout();
-		
-		//	store account data
-		for (int a = 0; a < accountNames.size(); a++) {
-			String accountName = accountNames.get(a);
-			Account account = ((Account) accountsByName.get(accountName));
-			saveAccount(account);
-		}
+//		
+//		//	store account data ==> no need to do that, accounts are stored as they are created or modified
+//		for (int a = 0; a < accountNames.size(); a++) {
+//			String accountName = accountNames.get(a);
+//			Account account = ((Account) accountsByName.get(accountName));
+//			saveAccount(account);
+//		}
 		
 		//	clean up
 		accountNames.clear();
@@ -762,7 +762,7 @@ public class AuthenticationManager {
 			
 			//	got accounts to choose
 			else {
-				//	get accouts to use
+				//	get accounts to use
 				ArrayList accNameList = new ArrayList();
 				accNameList.addAll(Arrays.asList(accountNames.toStringArray()));
 				if ((adHocAccount != null) && (adHocAccount.host != null) && (adHocAccount.port != -1))
@@ -813,21 +813,27 @@ public class AuthenticationManager {
 				//	prepare URL
 				String host = activeAccount.host;
 				
-				//	truncate protocol, it's http anyway
-				if (host.indexOf("://") != -1) host = host.substring(host.indexOf("://") + 3);
+				//	get protocol, defaulting to http
+				String protocol = "http";
+				if (host.indexOf("://") != -1) {
+					protocol = host.substring(0, host.indexOf("://"));
+					host = host.substring(host.indexOf("://") + "://".length());
+				}
 				
 				//	separate host and file
-				int hfSplit = host.indexOf("/");
 				String file = "";
+				int hfSplit = host.indexOf("/");
 				if (hfSplit != -1) {
 					file = host.substring(hfSplit);
+					while (file.startsWith("/"))
+						file = file.substring("/".length());
 					host = host.substring(0, hfSplit);
 					if (host.indexOf(':') != -1)
 						host = host.substring(0, host.indexOf(':'));
 				}
 				
 				//	create connector
-				authClient = AuthenticatedClient.getAuthenticatedClient(ServerConnection.getServerConnection("http://" + host + ":" + activeAccount.port + "/" + file), true);
+				authClient = AuthenticatedClient.getAuthenticatedClient(ServerConnection.getServerConnection(protocol + "://" + host + ":" + activeAccount.port + "/" + file), true);
 			}
 			else authClient = AuthenticatedClient.getAuthenticatedClient(ServerConnection.getServerConnection(activeAccount.host, activeAccount.port), true);
 		}

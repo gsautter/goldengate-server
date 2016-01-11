@@ -653,7 +653,7 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	
 	private TreeMap usersByUserNames = new TreeMap();
 	
-	//	default adiministrator user, can log in if no other administrator given
+	//	default administrator user, can log in if no other administrator given
 	private final User DEFAULT_ADMIN = new User("Admin", "GG", true);
 	
 	//	read the user data from the CSV table
