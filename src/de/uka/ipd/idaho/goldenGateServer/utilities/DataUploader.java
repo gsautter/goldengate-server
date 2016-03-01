@@ -130,6 +130,7 @@ public class DataUploader extends JFrame implements GoldenGateConstants {
 						break;
 					}
 					catch (IOException ioe) {
+						ioe.printStackTrace(System.out);
 						if (JOptionPane.showConfirmDialog(DataUploader.this, ("An error occurred while uploading " + fileName + ":\n" + ioe.getMessage() + "\nContinue uploading?"), "File Update Error", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE) != JOptionPane.YES_OPTION)
 							break;
 					}
