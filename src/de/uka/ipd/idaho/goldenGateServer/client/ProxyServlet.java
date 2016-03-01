@@ -28,12 +28,10 @@
 package de.uka.ipd.idaho.goldenGateServer.client;
 
 
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import java.io.BufferedOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.io.Reader;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -64,52 +62,48 @@ public class ProxyServlet extends GgServerClientServlet implements GoldenGateSer
 	 */
 	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
 		
-		Reader requestReader = null;
-		BufferedWriter responseWriter = null;
+		InputStream requestIn = null;
+		OutputStream responseOut = null;
 		Connection con = null;
 		try {
 			con = this.serverConnection.getConnection();
 			
 			//	loop request data through to server
-			requestReader = new InputStreamReader(request.getInputStream(), ENCODING);
-			BufferedWriter serverWriter = con.getWriter();
+			requestIn = request.getInputStream();
+			OutputStream serverOut = con.getOutputStream();
 			
 			//	send 'PROXIED' property
-			serverWriter.write("PROXIED");
-			serverWriter.newLine();
-			char[] outBuf = new char[1024];
-			int outLen = -1;
-			while ((outLen = requestReader.read(outBuf)) != -1)
-				serverWriter.write(outBuf, 0, outLen);
-			serverWriter.flush();
+			serverOut.write("PROXIED\r\n".getBytes(ENCODING));
+			byte[] buffer = new byte[1024];
+			for (int r; (r = requestIn.read(buffer, 0, buffer.length)) != -1;)
+				serverOut.write(buffer, 0, r);
+			serverOut.flush();
 			
 			//	loop server response through to requester
-			BufferedReader serverReader = con.getReader();
-			response.setContentType("text/plain");
+			InputStream serverIn = con.getInputStream();
+			response.setContentType("application/octet-stream");
 			response.setHeader("Cache-Control", "no-cache");
-			responseWriter = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), ENCODING));
+			responseOut = new BufferedOutputStream(response.getOutputStream());
 			
-			char[] inBuf = new char[1024];
-			int inLen = -1;
-			while ((inLen = serverReader.read(inBuf)) != -1)
-				responseWriter.write(inBuf, 0, inLen);
-			responseWriter.flush();
+			for (int r; (r = serverIn.read(buffer, 0, buffer.length)) != -1;)
+				responseOut.write(buffer, 0, r);
+			responseOut.flush();
 		}
 		catch (IOException ioe) {
-			if (responseWriter == null)
-				responseWriter = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), ENCODING));
-			responseWriter.write(ioe.getMessage());
-			responseWriter.newLine();
-			responseWriter.flush();
+			if (responseOut == null)
+				responseOut = new BufferedOutputStream(response.getOutputStream());
+			responseOut.write(ioe.getMessage().getBytes(ENCODING));
+			responseOut.write("\r\n".getBytes(ENCODING));
+			responseOut.flush();
 			throw ioe;
 		}
 		finally {
 			if (con != null)
 				con.close();
-			if (requestReader != null)
-				requestReader.close();
-			if (responseWriter != null)
-				responseWriter.close();
+			if (requestIn != null)
+				requestIn.close();
+			if (responseOut != null)
+				responseOut.close();
 		}
 	}
 }

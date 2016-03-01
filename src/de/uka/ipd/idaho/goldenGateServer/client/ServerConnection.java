@@ -425,40 +425,71 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	/**
 	 * Obtain a ServerConnection for communication over HTTP with some server
 	 * identified by a URL.
-	 * @param url the URL to communicate with (as a String)
+	 * @param urlStr the URL to communicate with (as a String)
 	 * @return the server connection
 	 */
-	public static ServerConnection getServerConnection(final String url) {
-		ServerConnection con = ((ServerConnection) serverConnectionPool.get(url));
-		if (con == null) {
-			con = new ServerConnection() {
+	public static ServerConnection getServerConnection(final String urlStr) {
+		ServerConnection srvCon = ((ServerConnection) serverConnectionPool.get(urlStr));
+		if (srvCon == null) {
+			srvCon = new ServerConnection() {
 				protected Connection produceConnection() throws IOException {
-					if (DEBUG) System.out.println("ServerConnection: connecting to " + url);
-					final HttpURLConnection con = ((HttpURLConnection) (new URL(url)).openConnection());
-					con.setDoOutput(true);
-					con.setDoInput(true);
-					con.setUseCaches(false);
-					con.setRequestMethod("POST");
-					con.connect();
+					if (DEBUG) System.out.println("ServerConnection: connecting to " + urlStr);
+					URL url = new URL(urlStr);
+					if (DEBUG) System.out.println(" - got URL: " + url);
+					final HttpURLConnection httpCon = ((HttpURLConnection) url.openConnection());
+					if (DEBUG) System.out.println(" - got connection");
+					httpCon.setDoOutput(true);
+					httpCon.setDoInput(true);
+					httpCon.setUseCaches(false);
+					httpCon.setRequestMethod("POST");
+					httpCon.setRequestProperty("Host", url.getHost());
+					httpCon.setRequestProperty("User-Agent", "GoldenGATE Server Client");
+					httpCon.setRequestProperty("Pragma", "no-cache");
+					httpCon.setRequestProperty("Cache-Control", "no-cache");
+					httpCon.setRequestProperty("Content-Type", "application/octet-stream");
+					if (DEBUG) System.out.println(" - headers set");
+					final boolean[] conWait = {true};
+					if (DEBUG) {
+						final Thread conThread = Thread.currentThread();
+						Thread obsThread = new Thread() {
+							public void run() {
+								while (conWait[0]) {
+									System.out.println();
+									System.out.println("WAITING FOR CONNECT TO RETURN");
+									StackTraceElement[] stes = conThread.getStackTrace();
+									for (int e = 0; e < stes.length; e++)
+										System.out.println(stes[e].toString());
+									try {
+										Thread.sleep(250);
+									} catch (InterruptedException ie) {}
+								}
+							}
+						};
+						obsThread.start();
+					}
+					
+					httpCon.connect();
+					if (DEBUG) System.out.println(" - connected");
+					conWait[0] = false;
 					return new Connection() {
 						protected InputStream produceInputStream() throws IOException {
-							return con.getInputStream();
+							return httpCon.getInputStream();
 						}
 						protected OutputStream produceOutputStream() throws IOException {
-							return con.getOutputStream();
+							return httpCon.getOutputStream();
 						}
 					};
 				}
 				public String toString() {
-					return (url);
+					return (urlStr);
 				}
 				public boolean isDirectSocket() {
 					return false;
 				}
 			};
-			serverConnectionPool.put(con.toString(), con);
+			serverConnectionPool.put(srvCon.toString(), srvCon);
 		}
-		return con;
+		return srvCon;
 	}
 	
 	/**
