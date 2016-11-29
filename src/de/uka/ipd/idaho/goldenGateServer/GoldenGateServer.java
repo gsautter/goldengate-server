@@ -141,7 +141,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		
 		//	open console (command line) interface
 		if (isDeamon) {
-			System.out.println(" - starting as deamon:");
+			System.out.println(" - starting as daemon:");
 			
 			int ncPort = 15808;
 			try {
@@ -714,6 +714,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	private static final String EXIT_COMMAND = "exit";
 	private static final String LIST_COMMAND = "list";
 	private static final String LIST_ERRORS_COMMAND = "errors";
+	private static final String POOL_SIZE_COMMAND = "poolSize";
 	private static final String SET_COMMAND = "set";
 	
 	private static ComponentActionConsole[] getLocalActions() {
@@ -780,7 +781,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 //		};
 //		cal.add(ca);
 		
-		//	shutdown (works only whn running from command line, as in deamon mode, 'exit' logs out from console)
+		//	shutdown (works only when running from command line, as in daemon mode, 'exit' logs out from console)
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return EXIT_COMMAND;
@@ -845,6 +846,26 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 							System.out.println("  " + serverComponentLoadErrors[c]);
 					}
 				}
+				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+			}
+		};
+		cal.add(ca);
+		
+		//	list component load errors
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return POOL_SIZE_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						POOL_SIZE_COMMAND,
+						"Output stats on the server's pool of service threads."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length == 0)
+					System.out.println("There are currently " + serviceThreadList.size() + " service threads, " + serviceThreadQueue.size() + " of them idle");
 				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};

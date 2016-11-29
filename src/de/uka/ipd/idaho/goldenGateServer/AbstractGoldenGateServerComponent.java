@@ -150,7 +150,7 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	}
 	
 	/**
-	 * shit down the server component further. This method replaces exit(),
+	 * shut down the server component further. This method replaces exit(),
 	 * which is final because it stores the component's configuration, calling
 	 * this method before doing so. This default implementation does nothing,
 	 * so sub classes may overwrite it as needed.

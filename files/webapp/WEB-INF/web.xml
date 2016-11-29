@@ -53,27 +53,6 @@
 	</servlet-mapping>
 	
 	
-	<!--servlet>
-		<servlet-name>ConfigurationServlet</servlet-name>
-		<servlet-class>de.uka.ipd.idaho.goldenGateServer.ecs.client.GoldenGateConfigurationServlet</servlet-class>
-		<init-param>
-			<param-name>configFile</param-name>
-			<param-value>Configurations.cnfg</param-value>
-		</init-param>
-		<init-param>
-			<param-name>dataPath</param-name>
-			<param-value>ecsClientData</param-value>
-		</init-param>
-	</servlet>
-	<servlet-mapping>
-		<servlet-name>ConfigurationServlet</servlet-name>
-		<url-pattern>/Configurations/*</url-pattern>
-	</servlet-mapping>
-	<servlet-mapping>
-		<servlet-name>ConfigurationServlet</servlet-name>
-		<url-pattern>/404.html</url-pattern>
-	</servlet-mapping-->
-	
 	<servlet>
 		<servlet-name>GgServerClientProxy</servlet-name>
 		<servlet-class>de.uka.ipd.idaho.goldenGateServer.client.ProxyServlet</servlet-class>
@@ -104,7 +83,7 @@
 	
 	<servlet>
 		<servlet-name>RefresherServlet</servlet-name>
-		<servlet-class>de.uka.ipd.idaho.goldenGateServer.utilities.RefresherServlet</servlet-class>
+		<servlet-class>de.uka.ipd.idaho.easyIO.web.ReInitializerServlet</servlet-class>
 	</servlet>
 	<servlet-mapping>
 		<servlet-name>RefresherServlet</servlet-name>
