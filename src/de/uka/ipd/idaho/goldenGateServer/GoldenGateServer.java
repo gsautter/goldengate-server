@@ -46,8 +46,10 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Set;
+import java.util.TreeSet;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
@@ -109,20 +111,20 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		
 		//	get parameters
 		String rootPath = "./";
-		boolean isDeamon = false;
+		boolean isDaemon = false;
 		for (int a = 0; a < args.length; a++) {
 			args[a] = args[a].trim();
 			if (args[a].startsWith("-path="))
 				rootPath = args[a].substring("-path=".length()).trim();
 			else if (args[a].equals("-d"))
-				isDeamon = true;
+				isDaemon = true;
 		}
 		rootFolder = new File(rootPath);
 		System.out.println(" - root folder is " + rootFolder.getAbsolutePath().replaceAll("\\\\", "/").replaceAll("\\/\\.\\/", "/"));
 		
 		//	read settings
 		settings = Settings.loadSettings(new File(rootFolder, CONFIG_FILE_NAME));
-		System.out.println(" - settings loaded:");
+		System.out.println(" - settings loaded");
 		
 		//	set WWW proxy
 		String proxy = settings.getSetting("wwwProxy");
@@ -140,7 +142,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		final PrintStream fError;
 		
 		//	open console (command line) interface
-		if (isDeamon) {
+		if (isDaemon) {
 			System.out.println(" - starting as daemon:");
 			
 			int ncPort = 15808;
@@ -266,11 +268,12 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	
 	private static synchronized void start() {
 		
-		//	read port and timeout
+		//	read network interface port and timeout, as well as maximum thread pool size
 		try {
 			port = Integer.parseInt(settings.getSetting(PORT_SETTING_NAME, ("" + port)));
 			networkInterfaceTimeout = Integer.parseInt(settings.getSetting("networkInterfaceTimeout", ("" + networkInterfaceTimeout)));
-		} catch (NumberFormatException e) {}
+			maxServiceThreadQueueSize = Integer.parseInt(settings.getSetting("maxIdleServiceThreads", ("" + maxServiceThreadQueueSize)));
+		} catch (NumberFormatException nfe) {}
 		
 		//	get database access data
 		ioProviderSettings = settings.getSubset("EasyIO");
@@ -486,7 +489,9 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	private static class ServerThread extends Thread {
 		private ServerSocket serverSocket;
 		
-		ServerThread() {}
+		ServerThread() {
+			super("GgServerMasterThread");
+		}
 		
 		public void run() {
 			
@@ -510,9 +515,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					
 					socket.setSoTimeout(networkInterfaceTimeout);
 					
-					//	create reader & writer
-//					final BufferedReader requestReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), ENCODING));
-//					final BufferedWriter responseWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), ENCODING));
+					//	create streams
 					final BufferedLineInputStream requestIn = new BufferedLineInputStream(socket.getInputStream(), ENCODING);
 					final BufferedLineOutputStream responseOut = new BufferedLineOutputStream(socket.getOutputStream(), ENCODING);
 					
@@ -530,56 +533,59 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					}
 					
 					//	process request
-					else st.service(new Runnable() {
-						public void run() {
-							try {
-								//	read command
-								String command = requestIn.readLine();
-								System.out.println("Command is " + command);
-								
-								//	catch 'PROXIED' property
-								if ("PROXIED".equals(command)) {
-									synchronized (proxiedServiceThreadIDs) {
-										proxiedServiceThreadIDs.add(new Long(Thread.currentThread().getId()));
-									}
-									command = requestIn.readLine();
-									System.out.println("Command is " + command);
-								}
-								
-								//	get action
-								ComponentActionNetwork action = ((ComponentActionNetwork) serverComponentActions.get(command));
-								
-								//	invalid action, send error
-								if (action == null) {
-									responseOut.write("Invalid action '" + command + "'");
-									responseOut.newLine();
-								}
-								
-								//	action found
-								else action.performActionNetwork(requestIn, responseOut);
-								
-								//	send response
-								responseOut.flush();
-								responseOut.close();
-							}
-							catch (Exception e) {
-								System.out.println("Error handling request - " + e.getMessage());
-								e.printStackTrace(System.out);
-							}
-							finally {
-								try {
-									socket.close();
-								}
-								catch (Exception e) {
-									System.out.println("Error finishing request - " + e.getMessage());
-									e.printStackTrace(System.out);
-								}
-								synchronized (proxiedServiceThreadIDs) {
-									proxiedServiceThreadIDs.remove(new Long(Thread.currentThread().getId()));
-								}
-							}
-						}
-					});
+					else st.service(new ServiceRequest(socket, requestIn, responseOut));
+//					
+//					//	process request
+//					else st.service(new Runnable() {
+//						public void run() {
+//							try {
+//								//	read command
+//								String command = requestIn.readLine();
+//								System.out.println("Command is " + command);
+//								
+//								//	catch 'PROXIED' property
+//								if ("PROXIED".equals(command)) {
+//									synchronized (proxiedServiceThreadIDs) {
+//										proxiedServiceThreadIDs.add(new Long(Thread.currentThread().getId()));
+//									}
+//									command = requestIn.readLine();
+//									System.out.println("Command is " + command);
+//								}
+//								
+//								//	get action
+//								ComponentActionNetwork action = ((ComponentActionNetwork) serverComponentActions.get(command));
+//								
+//								//	invalid action, send error
+//								if (action == null) {
+//									responseOut.write("Invalid action '" + command + "'");
+//									responseOut.newLine();
+//								}
+//								
+//								//	action found
+//								else action.performActionNetwork(requestIn, responseOut);
+//								
+//								//	send response
+//								responseOut.flush();
+//								responseOut.close();
+//							}
+//							catch (Exception e) {
+//								System.out.println("Error handling request - " + e.getMessage());
+//								e.printStackTrace(System.out);
+//							}
+//							finally {
+//								try {
+//									socket.close();
+//								}
+//								catch (Exception e) {
+//									System.out.println("Error finishing request - " + e.getMessage());
+//									e.printStackTrace(System.out);
+//								}
+//								synchronized (proxiedServiceThreadIDs) {
+//									proxiedServiceThreadIDs.remove(new Long(Thread.currentThread().getId()));
+//								}
+//							}
+//						}
+//					});
 				}
 				
 				//	catch Exceptions caused by singular incoming connection requests
@@ -629,10 +635,12 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		
 		private final Object lock = new Object();
 		
-		private Runnable request = null;
+//		private Runnable request = null;
+		private ServiceRequest request = null;
 		private boolean keepRunning = true;
 		
 		ServiceThread() {
+			super("GgServerServiceThread-" + (serviceThreadList.size() + 1));
 			serviceThreadList.add(this);
 		}
 		
@@ -643,15 +651,15 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				
 				//	wait until notified
 				synchronized(lock) {
-					try { // test if request already set, might happen on creation
-						if (this.request == null)
-							this.lock.wait();
+					if (this.request == null) try { // test if request already set, might happen on creation
+						this.lock.wait();
 					} catch (InterruptedException ie) {}
 				}
 				
 				//	execute action if given
 				if (this.request != null) try {
-					this.request.run();
+//					this.request.run();
+					this.request.execute();
 				}
 				catch (Throwable t) {
 					System.out.println("Error handling request - " + t.getClass().getName() + " (" + t.getMessage() + ")");
@@ -661,15 +669,31 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				//	clear action
 				this.request = null;
 				
-				//	re-enqueue if not shut down
+				//	re-enqueue if not shut down ...
 				if (this.keepRunning)
 					synchronized (serviceThreadQueue) {
-						serviceThreadQueue.addLast(this);
+						
+						//	but only if less than 128 idle threads in list
+						if (serviceThreadQueue.size() < maxServiceThreadQueueSize)
+							serviceThreadQueue.addLast(this);
+						
+						//	shut down otherwise
+						else {
+							serviceThreadList.remove(this);
+							this.keepRunning = false;
+						}
 					}
 			}
 		}
+//		
+//		void service(Runnable request) {
+//			synchronized(lock) {
+//				this.request = request;
+//				this.lock.notifyAll();
+//			}
+//		}
 		
-		void service(Runnable request) {
+		void service(ServiceRequest request) {
 			synchronized(lock) {
 				this.request = request;
 				this.lock.notifyAll();
@@ -689,11 +713,109 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		}
 	}
 	
+	private static class ServiceRequest {
+		private Socket socket;
+		private BufferedLineInputStream requestIn;
+		private BufferedLineOutputStream responseOut;
+		ServiceRequest(Socket socket, BufferedLineInputStream requestIn, BufferedLineOutputStream responseOut) {
+			this.socket = socket;
+			this.requestIn = requestIn;
+			this.responseOut = responseOut;
+		}
+		void execute() {
+			Thread thread = Thread.currentThread();
+			Long threadId = new Long(thread.getId());
+			ServiceAction threadAction = null;
+			try {
+				
+				//	read command
+				String command = this.requestIn.readLine();
+				System.out.println("Command is " + command);
+				
+				//	catch 'PROXIED' property
+				if ("PROXIED".equals(command)) {
+					synchronized (proxiedServiceThreadIDs) {
+						proxiedServiceThreadIDs.add(threadId);
+					}
+					command = this.requestIn.readLine();
+					System.out.println("Command is " + command);
+				}
+				
+				//	mark action as running
+				threadAction = new ServiceAction(command, thread.getName());
+				synchronized (runningServiceActions) {
+					runningServiceActions.add(threadAction);
+				}
+				
+				//	get action
+				ComponentActionNetwork action = ((ComponentActionNetwork) serverComponentActions.get(command));
+				
+				//	invalid action, send error
+				if (action == null) {
+					this.responseOut.write("Invalid action '" + command + "'");
+					this.responseOut.newLine();
+				}
+				
+				//	action found
+				else action.performActionNetwork(this.requestIn, this.responseOut);
+				
+				//	send response
+				this.responseOut.flush();
+				this.responseOut.close();
+			}
+			catch (Exception e) {
+				System.out.println("Error handling request - " + e.getMessage());
+				e.printStackTrace(System.out);
+			}
+			finally {
+				try {
+					this.socket.close();
+				}
+				catch (Exception e) {
+					System.out.println("Error finishing request - " + e.getMessage());
+					e.printStackTrace(System.out);
+				}
+				synchronized (proxiedServiceThreadIDs) {
+					proxiedServiceThreadIDs.remove(threadId);
+				}
+				synchronized (runningServiceActions) {
+					runningServiceActions.remove(threadAction); // catching null inside remove()
+				}
+			}
+		}
+	}
+	
+	private static class ServiceAction implements Comparable {
+		private final long start;
+		private final String command;
+		private final String threadName;
+		ServiceAction(String command, String threadName) {
+			this.start = System.currentTimeMillis();
+			this.command = command;
+			this.threadName = threadName;
+		}
+		public int compareTo(Object obj) {
+			ServiceAction sa = ((ServiceAction) obj);
+			return ((this.start == sa.start) ? this.threadName.compareTo(sa.threadName) : ((int) (this.start - sa.start)));
+		}
+		public String toString() {
+			return (" - " + this.command + " (running since " + (System.currentTimeMillis() - this.start) + "ms)");
+		}
+	}
+	
+	private static Set runningServiceActions = new TreeSet() {
+		public boolean remove(Object obj) {
+			return ((obj != null) && super.remove(obj));
+		}
+	};
+	
 	private static LinkedList serviceThreadList = new LinkedList(); 
 	private static LinkedList serviceThreadQueue = new LinkedList();
+	private static int maxServiceThreadQueueSize = 128;
 	
 	private static ServiceThread getServiceThread() {
-		if (!isRunning()) return null;
+		if (!isRunning())
+			return null;
 		
 		synchronized (serviceThreadQueue) {
 			if (serviceThreadQueue.isEmpty()) {
@@ -709,77 +831,16 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	private static final String DEFAULT_LOGFILE_DATE_FORMAT = "yyyy.MM.dd HH:mm:ss";
 	private static final DateFormat LOG_TIMESTAMP_FORMATTER = new SimpleDateFormat(DEFAULT_LOGFILE_DATE_FORMAT);
 	
-//	private static final String START_COMMAND = "start";
-//	private static final String STOP_COMMAND = "stop";
 	private static final String EXIT_COMMAND = "exit";
 	private static final String LIST_COMMAND = "list";
 	private static final String LIST_ERRORS_COMMAND = "errors";
 	private static final String POOL_SIZE_COMMAND = "poolSize";
+	private static final String ACTIONS_COMMAND = "actions";
 	private static final String SET_COMMAND = "set";
 	
 	private static ComponentActionConsole[] getLocalActions() {
 		ArrayList cal = new ArrayList();
 		ComponentActionConsole ca;
-//		
-//		//	start
-//		ca = new ComponentActionConsole() {
-//			public String getActionCommand() {
-//				return START_COMMAND;
-//			}
-//			public String[] getExplanation() {
-//				String[] explanation = {
-//						START_COMMAND + " <path>",
-//						"Start GoldenGATE Component Server.",
-//						"- <path>: the server's root directory (optional, will use current folder if not specified)"
-//					};
-//				return explanation;
-//			}
-//			public void performActionConsole(String[] arguments) {
-//				if (arguments.length <= 1) {
-//					if (isRunning())
-//						System.out.println(" GoldenGATE Component Server is already running");
-//					
-//					else {
-//						String fileName = ((arguments.length == 0) ? "./" : arguments[0]);
-//						start(new File(fileName));
-//						
-//						if (isRunning())
-//							System.out.println(" GoldenGATE Component Server started successfully");
-//						else System.out.println(" GoldenGATE Component Server could not be started");
-//					}
-//				}
-//				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments, or the root path as the only argument.");
-//			}
-//		};
-//		cal.add(ca);
-//		
-//		//	stop
-//		ca = new ComponentActionConsole() {
-//			public String getActionCommand() {
-//				return STOP_COMMAND;
-//			}
-//			public String[] getExplanation() {
-//				String[] explanation = {
-//						STOP_COMMAND,
-//						"Stop GoldenGATE Component Server, shutting down all embedded server components."
-//					};
-//				return explanation;
-//			}
-//			public void performActionConsole(String[] arguments) {
-//				if (arguments.length == 0) {
-//					if (isRunning()) {
-//						stop();
-//						
-//						if (!isRunning())
-//							System.out.println(" GoldenGATE Component Server stopped successfully");
-//						else System.out.println(" GoldenGATE Component Server could not be stopped, try shutdown");
-//					}
-//					else System.out.println(" GoldenGATE Component Server is not running");
-//				}
-//				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
-//			}
-//		};
-//		cal.add(ca);
 		
 		//	shutdown (works only when running from command line, as in daemon mode, 'exit' logs out from console)
 		ca = new ComponentActionConsole() {
@@ -851,7 +912,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		};
 		cal.add(ca);
 		
-		//	list component load errors
+		//	show current size of thread pool
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return POOL_SIZE_COMMAND;
@@ -867,6 +928,32 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				if (arguments.length == 0)
 					System.out.println("There are currently " + serviceThreadList.size() + " service threads, " + serviceThreadQueue.size() + " of them idle");
 				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+			}
+		};
+		cal.add(ca);
+		
+		//	show current size of thread pool
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return ACTIONS_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						ACTIONS_COMMAND,
+						"Output stats on currently running actions."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0) {
+					System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+					return;
+				}
+				synchronized (runningServiceActions) {
+					System.out.println("There are currently " + runningServiceActions.size() + " actions running:");
+					for (Iterator sait = runningServiceActions.iterator(); sait.hasNext();)
+						System.out.println(sait.next().toString());
+				}
 			}
 		};
 		cal.add(ca);
@@ -939,7 +1026,9 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		String currentLetterCode = "";
 		PrintStream out;
 		
-		ComponentServerConsole() {}
+		ComponentServerConsole() {
+			super("GgServerConsoleThread");
+		}
 		
 		public abstract void run();
 		
@@ -1140,7 +1229,6 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				String commandString = this.commandReader.readLine();
 				if (commandString == null)
 					return;
-				
 				else this.executeCommand(commandString.trim());
 			}
 			catch (Exception e) {
@@ -1217,7 +1305,6 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					}
 					
 					this.s = s;
-//					this.s.setSoTimeout(0); // TODOne figure out sensible timeout to disconnect crashed consoles automatically
 					this.s.setSoTimeout(this.timeout);
 					synchronized (consoleOutLock) {
 						this.out = sOut;

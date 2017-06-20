@@ -120,6 +120,9 @@ public class GoldenGateServerEventService implements GoldenGateServerConstants {
 		if (notifyingListeners.isEmpty())
 			notifyingListenersByThreadID.remove(threadId);
 		
+		//	finish notification
+		gse.notificationComplete();
+		
 		//	close log
 		gse.closeLog();
 		

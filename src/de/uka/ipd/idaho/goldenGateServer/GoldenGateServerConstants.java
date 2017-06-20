@@ -164,6 +164,15 @@ public interface GoldenGateServerConstants {
 			return (this.type + " " + this.sourceClassName + " " + this.eventTime + " " + this.eventId);
 		}
 		
+		/**
+		 * Perform any actions required after notification of this event has
+		 * completed. This method is called right before event notification
+		 * returns, independent of whether or not it terminated normally or
+		 * with an exception. This default implementation does nothing, sub
+		 * classes re welcome to overwrite it as needed.
+		 */
+		public void notificationComplete() {}
+		
 		/*
 		 * stop the logging to prevent components handling the event asynchronously
 		 * from wasting memory (used by GoldenGateServerEventQueue after synchronous

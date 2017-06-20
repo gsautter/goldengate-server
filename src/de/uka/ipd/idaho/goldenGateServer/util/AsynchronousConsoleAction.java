@@ -353,7 +353,6 @@ public abstract class AsynchronousConsoleAction implements ComponentActionConsol
 		private String[] arguments;
 		
 		AsynchronousActionThread(String[] arguments) {
-			super();
 			this.arguments = arguments;
 		}
 		
