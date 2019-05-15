@@ -8,7 +8,7 @@
 	<target name="zips" depends="backendzip,frontendzip,serverclient,authmanager,datauploaderzip">
 	</target>
 	
-	<target name="backendzip" depends="serverjar,serverconsolejar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
+	<target name="backendzip" depends="serverjar,serverconsolejar,aaajar,enrjar,aepjar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
 		<delete file="${app.server}"/>
 		<zip destfile="${app.server}">
 			<fileset dir="${file.home}/server"/>
@@ -62,6 +62,45 @@
 			<fileset dir="${build.home}/classes" includes="**/utilities/InstallerUtils*.class"/>
 			<fileset dir="${src.home}" includes="**/utilities/ServerComponentInstaller.java"/>
 			<fileset dir="${src.home}" includes="**/utilities/InstallerUtils.java"/>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="aaajar">
+		<delete file="${jar.aaa}" />
+		<jar destfile="${jar.aaa}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/aaa/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/aaa/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="enrjar">
+		<delete file="${jar.enr}" />
+		<jar destfile="${jar.enr}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/enr/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/enr/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="aepjar">
+		<delete file="${jar.aep}" />
+		<jar destfile="${jar.aep}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/aep/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/aep/*.java" />
+			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
 	</target>
@@ -123,7 +162,7 @@
 	</target>
 	
 	
-	<target name="frontendzip" depends="webfrontendjar,authwebclientjar,uaamodul,udsmodul,upsmodul,reinitmodul,webappextenderjar">
+	<target name="frontendzip" depends="webfrontendjar,authwebapi,enrclient,authwebclientjar,aaamodul,uaamodul,udsmodul,upsmodul,reinitmodul,webappextenderjar">
 		<delete file="${app.webfrontend}" />
 		<zip destfile="${app.webfrontend}">
 			<fileset dir="${file.home}/webapp" />
@@ -156,6 +195,38 @@
 		</jar>
 	</target>
 	
+	<target name="authwebapi">
+		<delete file="${jar.authwebapi}" />
+		<jar destfile="${jar.authwebapi}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/aaa/ApiAccessAuthorityConstants*.class" />
+				<include name="**/goldenGateServer/aaa/client/ApiAuthenticationClient*.class" />
+				<include name="**/goldenGateServer/aaa/webClient/GgServerApiServlet*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/aaa/ApiAccessAuthorityConstants.java" />
+				<include name="**/goldenGateServer/aaa/client/ApiAuthenticationClient.java" />
+				<include name="**/goldenGateServer/aaa/webClient/GgServerApiServlet.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="enrclient">
+		<delete file="${jar.enrclient}" />
+		<jar destfile="${jar.enrclient}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/enr/GoldenGateEnrConstants*.class" />
+				<include name="**/goldenGateServer/enr/client/GoldenGateEnrClientServlet*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/enr/GoldenGateEnrConstants.java" />
+				<include name="**/goldenGateServer/enr/client/GoldenGateEnrClientServlet.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
 	<target name="authwebclientjar">
 		<delete file="${jar.authwebclient}" />
 		<jar destfile="${jar.authwebclient}" manifest="${file.home}/MANIFEST.components.MF">
@@ -170,6 +241,23 @@
 				<include name="**/goldenGateServer/uaa/client/AuthenticatedClient.java" />
 				<include name="**/goldenGateServer/uaa/webClient/*.java" />
 				<exclude name="**/goldenGateServer/uaa/webClient/UserManagerModul.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="aaamodul">
+		<delete file="${jar.aaamodul}" />
+		<jar destfile="${jar.aaamodul}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/aaa/ApiAccessAuthorityConstants*.class" />
+				<include name="**/goldenGateServer/aaa/client/ApiAccessAuthorityClient*.class" />
+				<include name="**/goldenGateServer/aaa/webClient/ApiTokenManagerModul*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/aaa/ApiAccessAuthorityConstants.java" />
+				<include name="**/goldenGateServer/aaa/client/ApiAccessAuthorityClient.java" />
+				<include name="**/goldenGateServer/aaa/webClient/ApiTokenManagerModul.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>

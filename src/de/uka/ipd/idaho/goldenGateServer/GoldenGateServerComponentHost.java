@@ -36,7 +36,7 @@ import de.uka.ipd.idaho.easyIO.IoProvider;
  * 
  * @author sautter
  */
-public interface GoldenGateServerComponentHost {
+public interface GoldenGateServerComponentHost extends GoldenGateServerActivityLogger {
 	
 	/**
 	 * Retrieve an IoProvider for accessing the database shared among all
@@ -46,12 +46,20 @@ public interface GoldenGateServerComponentHost {
 	public abstract IoProvider getIoProvider();
 	
 	/**
-	 * Check whether the current request is proxied, i.e. whether it is coming
-	 * through a proxy servlet. This propery is based on the executing service
-	 * thread.
+	 * Check whether the current request is proxied, i.e. whether or not it is
+	 * coming through a proxy servlet. This propery is based on the executing
+	 * service thread.
 	 * @return true if the current request is proxied
 	 */
 	public abstract boolean isRequestProxied();
+	
+	/**
+	 * Check whether the current request is a client request, i.e. whether it
+	 * is coming through the network interface. This propery is based on the
+	 * executing service thread.
+	 * @return true if the current request is coming through the network interface
+	 */
+	public abstract boolean isClientRequest();
 	
 	/**
 	 * Retrieve a global property of the GoldenGATE server environment. There is

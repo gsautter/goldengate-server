@@ -37,12 +37,11 @@ import de.uka.ipd.idaho.goldenGateServer.uaa.UserAccessAuthorityConstants;
 import de.uka.ipd.idaho.goldenGateServer.uaa.data.UserList;
 
 /**
- * A client for remotely managing users in a UserAccessAuthority.
+ * A client for remotely managing users in a User Access Authority.
  * 
  * @author sautter
  */
 public class UserAccessAuthorityClient implements UserAccessAuthorityConstants {
-	
 	private AuthenticatedClient authClient;
 	
 	/** Constructor

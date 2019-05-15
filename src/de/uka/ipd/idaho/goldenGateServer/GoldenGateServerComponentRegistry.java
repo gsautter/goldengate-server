@@ -53,9 +53,8 @@ public class GoldenGateServerComponentRegistry {
 	 * @param serverComponent the server component to register
 	 */
 	public static void registerServerComponent(GoldenGateServerComponent serverComponent) {
-//		if (serverComponent != null)
-//			registry.put(serverComponent.getClass().getName(), serverComponent);
-		if (serverComponent == null) return;
+		if (serverComponent == null)
+			return;
 		
 		Class scClass = serverComponent.getClass();
 		while (GoldenGateServerComponent.class.isAssignableFrom(scClass)) {
@@ -75,9 +74,8 @@ public class GoldenGateServerComponentRegistry {
 	 * @param serverComponent the server component to remove
 	 */
 	public static void unregisterServerComponent(GoldenGateServerComponent serverComponent) {
-//		if (serverComponent != null)
-//			registry.remove(serverComponent.getClass().getName());
-		if (serverComponent == null) return;
+		if (serverComponent == null)
+			return;
 		
 		Class scClass = serverComponent.getClass();
 		while (GoldenGateServerComponent.class.isAssignableFrom(scClass)) {
@@ -101,7 +99,6 @@ public class GoldenGateServerComponentRegistry {
 	 *         null, if there is no such server component
 	 */
 	public static GoldenGateServerComponent getServerComponent(String className) {
-//		return ((GoldenGateServerComponent) registry.get(className));
 		GoldenGateServerComponent[] scs = getServerComponents(className);
 		return ((scs.length == 0) ? null : scs[0]);
 	}
@@ -124,11 +121,36 @@ public class GoldenGateServerComponentRegistry {
 	 * @return an array holding all server components currently registered
 	 */
 	public static GoldenGateServerComponent[] getServerComponents() {
-//		ArrayList serverComponentList = new ArrayList(registry.values());
-//		return ((GoldenGateServerComponent[]) serverComponentList.toArray(new GoldenGateServerComponent[serverComponentList.size()]));
 		LinkedHashSet scSet = new LinkedHashSet();
 		for (Iterator scit = registry.values().iterator(); scit.hasNext();)
 			scSet.addAll((LinkedHashSet) scit.next());
+		return ((GoldenGateServerComponent[]) scSet.toArray(new GoldenGateServerComponent[scSet.size()]));
+	}
+	
+	/**
+	 * Find a server component derived from a specific class.
+	 * @param cls the class whose implementation to find
+	 * @return the first server component derived from the argument class
+	 */
+	public GoldenGateServerComponent getImplementingServerComponent(Class cls) {
+		GoldenGateServerComponent[] implementingScs = this.getImplementingServerComponents(cls);
+		return ((implementingScs.length == 0) ? null : implementingScs[0]);
+	}
+	
+	/**
+	 * Find all server components derived from a specific class.
+	 * @param cls the class whose implementations to find
+	 * @return an array holding the server components derived from the argument
+	 *            class
+	 */
+	public GoldenGateServerComponent[] getImplementingServerComponents(Class cls) {
+		LinkedHashSet scSet = new LinkedHashSet();
+		for (Iterator scsit = registry.values().iterator(); scsit.hasNext();)
+			for (Iterator scit = ((LinkedHashSet) scsit.next()).iterator(); scit.hasNext();) {
+				Object sc = scit.next();
+				if (cls.isInstance(sc))
+					scSet.add(sc);
+			}
 		return ((GoldenGateServerComponent[]) scSet.toArray(new GoldenGateServerComponent[scSet.size()]));
 	}
 }

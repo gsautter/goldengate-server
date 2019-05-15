@@ -55,6 +55,40 @@ import de.uka.ipd.idaho.goldenGateServer.util.BufferedLineOutputStream;
  */
 public abstract class ServerConnection implements GoldenGateServerConstants {
 	
+	/* TODO introduce connection headers (session ID, etc.):
+	 * - allow for setting as key/value pairs before output stream retrieved ...
+	 * - ... and throw IllegalStateException afterwards
+	 * - append to action command in IMF attribute syntax ('<key>value<key>value...')
+	 * ==> require action command as parameter to getConnection()
+	 * ==> on getOutputStream():
+	 *   - open output stream
+	 *   - send action command and any present headers
+	 *   
+	 * ==> automatically set session header in in AuthenticatedClient if logged in
+	 */
+	
+	/* TODO facilitate direct (in-JVM) connections:
+	 * - allows for running GgServer in servlet together with web front-end in smaller deployments (failover SRS, etc.)
+	 * - cuts network out of communication for better performance
+	 * - implementation:
+	 *   - move this class to 'com' (communication) package (pack with both back-end and front-end JARs)
+	 *   - allow setting custom connection factory ...
+	 *   - ... and use that to inject local connection factory from GoldenGateServerServlet
+	 */
+	
+	/* TODO add isLocal property:
+	 * - return true in direct connection only
+	 * - switch off plain data caching in clients if local
+	 *   ==> no need for SRS client caching, for instance
+	 *   ==> still cache stats, though
+	 */
+	
+	/* TODO also provide header handling in 'com' package
+	 * - most likely as static Connection.getHeader(name) method
+	 * - also move isProxied() there
+	 * - also use Connection in back-end
+	 */
+	
 	/**
 	 * Generic representation of a connection to the backend server, consisting of a
 	 * writer for sending a request and a reader for receiving the response. Note

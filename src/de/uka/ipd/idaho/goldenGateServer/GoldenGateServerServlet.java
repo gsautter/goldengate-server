@@ -37,6 +37,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -68,10 +69,12 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 	
 	private GoldenGateServerComponent[] serverComponents;
 	private HashMap serverComponentActions = new HashMap();
+	private HashSet clientRequestThreadIDs = new HashSet();
 	
 	private Settings ioProviderSettings = new Settings();
 	private Settings environmentSettings = new Settings();
 	
+	private int logLevel = GoldenGateServerActivityLogger.LOG_LEVEL_WARNING;
 	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponentHost#getIoProvider()
@@ -95,6 +98,15 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 	}
 	
 	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponentHost#isClientRequest()
+	 */
+	public boolean isClientRequest() {
+		synchronized (this.clientRequestThreadIDs) {
+			return (this.clientRequestThreadIDs.contains(Long.valueOf(Thread.currentThread().getId())));
+		}
+	}
+	
+	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponentHost#getServerComponent(java.lang.String)
 	 */
 	public GoldenGateServerComponent getServerComponent(String className) {
@@ -113,6 +125,72 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 	 */
 	public GoldenGateServerComponent[] getServerComponents() {
 		return GoldenGateServerComponentRegistry.getServerComponents();
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logError(java.lang.String)
+	 */
+	public void logError(String message) {
+		this.log(message, GoldenGateServerActivityLogger.LOG_LEVEL_ERROR);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logError(java.lang.Throwable)
+	 */
+	public void logError(Throwable error) {
+		this.log(error, GoldenGateServerActivityLogger.LOG_LEVEL_ERROR);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logWarning(java.lang.String)
+	 */
+	public void logWarning(String message) {
+		this.log(message, GoldenGateServerActivityLogger.LOG_LEVEL_WARNING);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logInfo(java.lang.String)
+	 */
+	public void logInfo(String message) {
+		this.log(message, GoldenGateServerActivityLogger.LOG_LEVEL_INFO);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logDebug(java.lang.String)
+	 */
+	public void logDebug(String message) {
+		this.log(message, GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logActivity(java.lang.String)
+	 */
+	public void logActivity(String message) {
+		this.log(message, GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logAlways(java.lang.String)
+	 */
+	public void logAlways(String message) {
+		this.log(message, -1);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logResult(java.lang.String)
+	 */
+	public void logResult(String message) {
+		this.logInfo(message);
+	}
+	
+	private void log(String message, int level) {
+		if (level <= this.logLevel)
+			System.out.println(message);
+	}
+	
+	private void log(Throwable error, int level) {
+		if (level <= this.logLevel)
+			error.printStackTrace(System.out);
 	}
 	
 	/* (non-Javadoc)
@@ -147,7 +225,7 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		//	load server components
 		GoldenGateServerComponent[] loadedServerComponents = GoldenGateServerComponentLoader.loadServerComponents(new File(rootPath, COMPONENT_FOLDER_NAME));
 		
-		//	initailize and register components
+		//	initialize and register components
 		ArrayList serverComponentList = new ArrayList();
 		for (int c = 0; c < loadedServerComponents.length; c++)
 			try {
@@ -196,13 +274,15 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		//	get operational ones
 		this.serverComponents = ((GoldenGateServerComponent[]) serverComponentList.toArray(new GoldenGateServerComponent[serverComponentList.size()]));
 		
-		//	obtain component's console actions
+		//	obtain component's network actions
 		for (int c = 0; c < serverComponents.length; c++) {
 			ComponentAction[] componentActions = serverComponents[c].getActions();
-			for (int a = 0; a < componentActions.length; a++) {
-				if (componentActions[a] instanceof ComponentActionNetwork)
+			for (int a = 0; a < componentActions.length; a++)
+				if (componentActions[a] instanceof ComponentActionNetwork) {
+					if (this.serverComponentActions.containsKey(componentActions[a].getActionCommand()))
+						throw new ServletException("Duplicate network action '" + componentActions[a].getActionCommand() + "'");
 					this.serverComponentActions.put(componentActions[a].getActionCommand(), componentActions[a]);
-			}
+				}
 		}
 	}
 	
@@ -233,8 +313,6 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		this.writeLogEntry("Handling request from " + request.getRemoteAddr());
 		
 		//	create reader & writer
-//		BufferedReader requestReader = new BufferedReader(new InputStreamReader(request.getInputStream(), ENCODING));
-//		BufferedWriter responseWriter = new BufferedWriter(new OutputStreamWriter(response.getOutputStream(), ENCODING));
 		BufferedLineInputStream requestReader = new BufferedLineInputStream(request.getInputStream(), ENCODING);
 		BufferedLineOutputStream responseWriter = new BufferedLineOutputStream(response.getOutputStream(), ENCODING);
 		
@@ -251,20 +329,37 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		//	get action
 		ComponentActionNetwork action = ((ComponentActionNetwork) this.serverComponentActions.get(command));
 		
-		//	invlaid action, send error
+		//	invalid action, send error
 		if (action == null) {
 			response.sendError(HttpServletResponse.SC_BAD_REQUEST, ("'" + command + "' does not identify an action within this server."));
+			requestReader.close();
+			responseWriter.close();
 			return;
 		}
 		
 		//	process request
 		else {
+			this.setClientRequest();
 			try {
 				action.performActionNetwork(requestReader, responseWriter);
 			}
 			catch (IOException ioe) {
 				writeLogEntry("Error handling request - " + ioe.getMessage());
 			}
+			finally {
+				this.clearClientRequest();
+			}
+		}
+	}
+	
+	private void setClientRequest() {
+		synchronized (this.clientRequestThreadIDs) {
+			this.clientRequestThreadIDs.add(Long.valueOf(Thread.currentThread().getId()));
+		}
+	}
+	private void clearClientRequest() {
+		synchronized (this.clientRequestThreadIDs) {
+			this.clientRequestThreadIDs.remove(Long.valueOf(Thread.currentThread().getId()));
 		}
 	}
 	

@@ -46,7 +46,7 @@ import de.uka.ipd.idaho.htmlXmlUtil.accessories.HtmlPageBuilder;
  * <ul>
  * <li>Generation starts with the so-called base page, the main HTML page
  * template (see respective parameter below)</li>
- * <li>In the base page, the signal tags (eg <i>&lt;includeFile
+ * <li>In the base page, the signal tags (e.g. <i>&lt;includeFile
  * file=&quot;mySpecialContentFile&quot;&gt;</i>) are successively replaced by
  * the content generated for them</li>
  * <li>If this generated content contains further signal tags, replacement
@@ -71,7 +71,7 @@ import de.uka.ipd.idaho.htmlXmlUtil.accessories.HtmlPageBuilder;
  * browser; this is a generic way of having arbitrary JavaScipt executed on page
  * un-loading</li>
  * <li>Finally, a page builder is offered to add arbitrary custom code to the
- * generated page's head, eg generated JavaScript or CSS code</li>
+ * generated page's head, e.g. generated JavaScript or CSS code</li>
  * </ul>
  * In order to work properly, this servlet reads one parameters from its
  * configuration file:
@@ -112,7 +112,7 @@ public class GgServerHtmlServlet extends GgServerClientServlet {
 	/**
 	 * Produce a page builder for answering a given request. This method may
 	 * return null if and only if the argument request has been handled in a
-	 * different (non-html) way , eg by sending an error if some sort of
+	 * different (non-html) way , e.g. by sending an error if some sort of
 	 * authentication has failed, or by sending some non-html response data.
 	 * This implementation returns a plain HtmlPageBuilder, enough for
 	 * assembling static web pages from multiple files. Sub classes are welcome

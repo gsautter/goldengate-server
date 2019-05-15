@@ -40,6 +40,7 @@ import java.util.Hashtable;
 import java.util.Iterator;
 import java.util.TreeMap;
 
+import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
@@ -50,9 +51,10 @@ import de.uka.ipd.idaho.stringUtils.csvHandler.StringRelation;
 import de.uka.ipd.idaho.stringUtils.csvHandler.StringTupel;
 
 /**
- * The user access authority manages user accounts, which can be modified
- * through a remote client or console actions. In addition, it does the session
- * management.
+ * GoldenGATE Server User Access Authority manages user accounts, which can be
+ * modified through a remote client or console actions. In addition, it does
+ * the session management and proxies access to both user permissions and user
+ * data.
  * 
  * @author sautter
  */
@@ -76,9 +78,9 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	private UserDataProvider udp;
 	
 	private static final String USER_TABLE_NAME = "GgUaaUsers";
-	private static final String USER_NAME_COLUMEN_NAME = "UserName";
-	private static final String PASSWORD_SALT_COLUMEN_NAME = "PswdSalt";
-	private static final String PASSWORD_HASH_COLUMEN_NAME = "PswdHash";
+	private static final String USER_NAME_COLUMN_NAME = "UserName";
+	private static final String PASSWORD_SALT_COLUMN_NAME = "PswdSalt";
+	private static final String PASSWORD_HASH_COLUMN_NAME = "PswdHash";
 	private static final String ADMIN_FLAG_COLUMN_NAME = "IsAdmin";
 	
 	private IoProvider io;
@@ -101,9 +103,9 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 		
 		//	ensure user table
 		TableDefinition td = new TableDefinition(USER_TABLE_NAME);
-		td.addColumn(USER_NAME_COLUMEN_NAME, TableDefinition.VARCHAR_DATATYPE, USER_NAME_MAX_LENGTH);
-		td.addColumn(PASSWORD_SALT_COLUMEN_NAME, TableDefinition.INT_DATATYPE, 0);
-		td.addColumn(PASSWORD_HASH_COLUMEN_NAME, TableDefinition.INT_DATATYPE, 0);
+		td.addColumn(USER_NAME_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, USER_NAME_MAX_LENGTH);
+		td.addColumn(PASSWORD_SALT_COLUMN_NAME, TableDefinition.INT_DATATYPE, 0);
+		td.addColumn(PASSWORD_HASH_COLUMN_NAME, TableDefinition.INT_DATATYPE, 0);
 		td.addColumn(ADMIN_FLAG_COLUMN_NAME, TableDefinition.CHAR_DATATYPE, 1);
 		if (!this.io.ensureTable(td, true))
 			throw new RuntimeException("User Access Authority cannot work without database access.");
@@ -217,12 +219,12 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0) {
-					System.out.println(" Users:");
+					this.reportResult(" Users:");
 					User[] users = getUsers();
 					for (int u = 0; u < users.length; u++)
-						System.out.println(" - " + users[u].userName + (users[u].isAdmin() ? "\tAdmin" : ""));
+						this.reportResult(" - " + users[u].userName + (users[u].isAdmin() ? "\tAdmin" : ""));
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);
@@ -244,10 +246,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 2) {
 					String error = createUser(SUPERUSER_NAME, SUPERUSER_PASSWORD, arguments[0], arguments[1]);
-					if (error == null) System.out.println(" User '" + arguments[0] + "' created successfully.");
-					else System.out.println(" Error creating user '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" User '" + arguments[0] + "' created successfully.");
+					else this.reportError(" Error creating user '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify username and password.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify username and password.");
 			}
 		};
 		cal.add(ca);
@@ -269,9 +272,9 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 				if (arguments.length == 1) {
 					File userListFile = new File(arguments[0]);
 					try {
-						System.out.println("Importing user data from " + userListFile.getAbsolutePath());
+						this.reportResult("Importing user data from " + userListFile.getAbsolutePath());
 						StringRelation userData = StringRelation.readCsvData(userListFile, '"', true, null);
-						System.out.println(" - File read, creating users");
+						this.reportResult(" - File read, creating users");
 						for (int u = 0; u < userData.size(); u++) {
 							StringTupel userNode = userData.get(u);
 							String userName = userNode.getValue(USER_NAME);
@@ -279,17 +282,18 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 							boolean isAdmin = IS_ADMIN.equals(userNode.getValue(IS_ADMIN, ""));
 							if ((userName != null) && (password != null)) {
 								String error = createUser(SUPERUSER_NAME, SUPERUSER_PASSWORD, userName, password, isAdmin);
-								if (error == null) System.out.println(" - User '" + userName + "' created successfully.");
-								else System.out.println(" - Error creating user '" + userName + "': " + error);
+								if (error == null)
+									this.reportResult(" - User '" + userName + "' created successfully.");
+								else this.reportError(" - Error creating user '" + userName + "': " + error);
 							}
 						}
 					}
 					catch (Exception e) {
-						System.out.println(" Error importing user data - " + e.getMessage());
-						e.printStackTrace(System.out);
+						this.reportError(" Error importing user data - " + e.getMessage());
+						this.reportError(e);
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the file to import only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the file to import only.");
 			}
 		};
 		cal.add(ca);
@@ -311,10 +315,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 2) {
 					String error = changePassword(SUPERUSER_NAME, SUPERUSER_PASSWORD, arguments[0], arguments[1]);
-					if (error == null) System.out.println(" Password of user '" + arguments[0] + "' changed successfully.");
-					else System.out.println(" Error changing password for user '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" Password of user '" + arguments[0] + "' changed successfully.");
+					else this.reportError(" Error changing password for user '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify username and the new password.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify username and the new password.");
 			}
 		};
 		cal.add(ca);
@@ -335,10 +340,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 1) {
 					String error = deleteUser(SUPERUSER_NAME, SUPERUSER_PASSWORD, arguments[0]);
-					if (error == null) System.out.println(" User '" + arguments[0] + "' deleted successfully.");
-					else System.out.println(" Error deleting user '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" User '" + arguments[0] + "' deleted successfully.");
+					else this.reportError(" Error deleting user '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify username only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify username only.");
 			}
 		};
 		cal.add(ca);
@@ -359,10 +365,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 1) {
 					String error = setAdmin(SUPERUSER_NAME, SUPERUSER_PASSWORD, arguments[0], true);
-					if (error == null) System.out.println(" Admin property for user '" + arguments[0] + "' set successfully.");
-					else System.out.println(" Error setting admin property for user '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" Admin property for user '" + arguments[0] + "' set successfully.");
+					else this.reportError(" Error setting admin property for user '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify username only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify username only.");
 			}
 		};
 		cal.add(ca);
@@ -383,10 +390,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 1) {
 					String error = setAdmin(SUPERUSER_NAME, SUPERUSER_PASSWORD, arguments[0], false);
-					if (error == null) System.out.println(" Admin property for user '" + arguments[0] + "' removed successfully.");
-					else System.out.println(" Error removing admin property for user '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" Admin property for user '" + arguments[0] + "' removed successfully.");
+					else this.reportError(" Error removing admin property for user '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify username only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify username only.");
 			}
 		};
 		cal.add(ca);
@@ -473,7 +481,6 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				
 				if (isValidSession(sessionId)) {
 					String userName = getUserNameForSession(sessionId);
 					String oldPassword = input.readLine();
@@ -497,8 +504,7 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				if (isValidSession(sessionId) && sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX)) {
-					
+				if (isAdminSession(sessionId)) {
 					User[] users = getUsers();
 					output.write(this.getActionCommand());
 					output.newLine();
@@ -526,14 +532,14 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				if (isValidSession(sessionId) && sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX)) {
-					
+				if (isAdminSession(sessionId)) {
 					String userName = input.readLine();
 					String password = input.readLine();
 					
 					String error = createUser(SUPERUSER_NAME, SUPERUSER_PASSWORD, userName, password);
 					
-					if (error == null) output.write(this.getActionCommand());
+					if (error == null)
+						output.write(this.getActionCommand());
 					else output.write(error);
 					output.newLine();
 				}
@@ -548,14 +554,14 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				if (isValidSession(sessionId) && sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX)) {
-					
+				if (isAdminSession(sessionId)) {
 					String userName = input.readLine();
 					String newPassword = input.readLine();
 					
 					String error = changePassword(SUPERUSER_NAME, SUPERUSER_PASSWORD, userName, newPassword);
 					
-					if (error == null) output.write(this.getActionCommand());
+					if (error == null)
+						output.write(this.getActionCommand());
 					else output.write(error);
 					output.newLine();
 				}
@@ -570,13 +576,13 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				if (isValidSession(sessionId) && sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX)) {
-					
+				if (isAdminSession(sessionId)) {
 					String userName = input.readLine();
 					
 					String error = deleteUser(SUPERUSER_NAME, SUPERUSER_PASSWORD, userName);
 					
-					if (error == null) output.write(this.getActionCommand());
+					if (error == null)
+						output.write(this.getActionCommand());
 					else output.write(error);
 					output.newLine();
 				}
@@ -591,13 +597,13 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				if (isValidSession(sessionId) && sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX)) {
-					
+				if (isAdminSession(sessionId)) {
 					String userName = input.readLine();
 					
 					String error = setAdmin(SUPERUSER_NAME, SUPERUSER_PASSWORD, userName, true);
 					
-					if (error == null) output.write(this.getActionCommand());
+					if (error == null)
+						output.write(this.getActionCommand());
 					else output.write(error);
 					output.newLine();
 				}
@@ -612,13 +618,13 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 			public void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException {
 				String sessionId = input.readLine();
-				if (isValidSession(sessionId) && sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX)) {
-					
+				if (isAdminSession(sessionId)) {
 					String userName = input.readLine();
 					
 					String error = setAdmin(SUPERUSER_NAME, SUPERUSER_PASSWORD, userName, false);
 					
-					if (error == null) output.write(this.getActionCommand());
+					if (error == null)
+						output.write(this.getActionCommand());
 					else output.write(error);
 					output.newLine();
 				}
@@ -660,9 +666,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	private void readUserData() {
 		boolean gotAdmin = false;
 		
-		String query = "SELECT " + USER_NAME_COLUMEN_NAME + ", " + PASSWORD_SALT_COLUMEN_NAME + ", " + PASSWORD_HASH_COLUMEN_NAME + ", " + ADMIN_FLAG_COLUMN_NAME + " FROM " + USER_TABLE_NAME + ";";
+		String query = "SELECT " + USER_NAME_COLUMN_NAME + ", " + PASSWORD_SALT_COLUMN_NAME + ", " + PASSWORD_HASH_COLUMN_NAME + ", " + ADMIN_FLAG_COLUMN_NAME + 
+				" FROM " + USER_TABLE_NAME + ";";
+		SqlQueryResult sqr = null;
 		try {
-			SqlQueryResult sqr = this.io.executeSelectQuery(query);
+			sqr = this.io.executeSelectQuery(query);
 			while (sqr.next()) {
 				User user = new User(sqr.getString(0), Integer.parseInt(sqr.getString(1)), Integer.parseInt(sqr.getString(2)), "A".equals(sqr.getString(3)));
 				this.usersByUserNames.put(user.userName, user);
@@ -670,16 +678,19 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			}
 		}
 		catch (SQLException sqle) {
-			System.out.println("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading users.");
-			System.out.println("  query was " + query);
+			this.logError("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading users.");
+			this.logError("  query was " + query);
 		}
-		
+		finally {
+			if (sqr != null)
+				sqr.close();
+		}
 		if ((this.usersByUserNames.isEmpty() || !gotAdmin))
 			this.usersByUserNames.put(DEFAULT_ADMIN.userName, DEFAULT_ADMIN);
 	}
 	
 	/**
-	 * Create a new user. The user name has to consist of letters and digrits only.
+	 * Create a new user. The user name has to consist of letters and digits only.
 	 * @param adminName the user name of the administrator creating the new user
 	 * @param adminPassword the password of the administrator creating the new
 	 *            user
@@ -693,7 +704,7 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	}
 	
 	/**
-	 * Create a new user. The user name has to consist of letters and digrits only.
+	 * Create a new user. The user name has to consist of letters and digits only.
 	 * @param adminName the user name of the administrator creating the new user
 	 * @param adminPassword the password of the administrator creating the new
 	 *            user
@@ -717,14 +728,17 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			return "User already exists.";
 		
 		user = new User(userName, password, asAdmin);
-		this.usersByUserNames.put(user.userName, user);
-		String query = "INSERT INTO " + USER_TABLE_NAME + " (" + USER_NAME_COLUMEN_NAME + ", " + PASSWORD_SALT_COLUMEN_NAME + ", " + PASSWORD_HASH_COLUMEN_NAME + ", " + ADMIN_FLAG_COLUMN_NAME + ") VALUES ('" + userName + "', " + user.getPasswordSalt() + ", " + user.getPasswordHash() + ", '" + (user.isAdmin() ? "A" : "U") + "');";
+		String query = "INSERT INTO " + USER_TABLE_NAME + "" +
+				" (" + USER_NAME_COLUMN_NAME + ", " + PASSWORD_SALT_COLUMN_NAME + ", " + PASSWORD_HASH_COLUMN_NAME + ", " + ADMIN_FLAG_COLUMN_NAME + ")" +
+				" VALUES" +
+				" ('" + EasyIO.sqlEscape(userName) + "', " + user.getPasswordSalt() + ", " + user.getPasswordHash() + ", '" + (user.isAdmin() ? "A" : "U") + "');";
 		try {
 			this.io.executeUpdateQuery(query);
+			this.usersByUserNames.put(user.userName, user); // only add user to runtime lookup map once persistence is established
 		}
 		catch (SQLException sqle) {
-			System.out.println("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while creating user.");
-			System.out.println("  query was " + query);
+			this.logError("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while creating user.");
+			this.logError("  query was " + query);
 		}
 		return null;
 	}
@@ -746,13 +760,15 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			return "New password is empty.";
 		
 		user.setPassword(newPassword);
-		String query = "UPDATE " + USER_TABLE_NAME + " SET " + PASSWORD_SALT_COLUMEN_NAME + " = " + user.getPasswordSalt() + ", " + PASSWORD_HASH_COLUMEN_NAME + " = " + user.getPasswordHash() + " WHERE " + USER_NAME_COLUMEN_NAME + " = '" + userName + "';";
+		String query = "UPDATE " + USER_TABLE_NAME + 
+				" SET " + PASSWORD_SALT_COLUMN_NAME + " = " + user.getPasswordSalt() + ", " + PASSWORD_HASH_COLUMN_NAME + " = " + user.getPasswordHash() + 
+				" WHERE " + USER_NAME_COLUMN_NAME + " = '" + EasyIO.sqlEscape(userName) + "';";
 		try {
 			this.io.executeUpdateQuery(query);
 		}
 		catch (SQLException sqle) {
-			System.out.println("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while changing password of user.");
-			System.out.println("  query was " + query);
+			this.logError("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while changing password of user.");
+			this.logError("  query was " + query);
 		}
 		return null;
 	}
@@ -778,13 +794,15 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 			return "New password is empty.";
 		
 		user.setPassword(newPassword);
-		String query = "UPDATE " + USER_TABLE_NAME + " SET " + PASSWORD_SALT_COLUMEN_NAME + " = " + user.getPasswordSalt() + ", " + PASSWORD_HASH_COLUMEN_NAME + " = " + user.getPasswordHash() + " WHERE " + USER_NAME_COLUMEN_NAME + " = '" + userName + "';";
+		String query = "UPDATE " + USER_TABLE_NAME + 
+				" SET " + PASSWORD_SALT_COLUMN_NAME + " = " + user.getPasswordSalt() + ", " + PASSWORD_HASH_COLUMN_NAME + " = " + user.getPasswordHash() + 
+				" WHERE " + USER_NAME_COLUMN_NAME + " = '" + EasyIO.sqlEscape(userName) + "';";
 		try {
 			this.io.executeUpdateQuery(query);
 		}
 		catch (SQLException sqle) {
-			System.out.println("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while setting password user.");
-			System.out.println("  query was " + query);
+			this.logError("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while setting password for user.");
+			this.logError("  query was " + query);
 		}
 		return null;
 	}
@@ -810,13 +828,15 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 		boolean wasAdmin = user.isAdmin();
 		user.setAdmin(isAdmin);
 		if (wasAdmin != isAdmin) {
-			String query = "UPDATE " + USER_TABLE_NAME + " SET " + ADMIN_FLAG_COLUMN_NAME + " = '" + (user.isAdmin() ? "A" : "U") + "' WHERE " + USER_NAME_COLUMEN_NAME + " = '" + userName + "';";
+			String query = "UPDATE " + USER_TABLE_NAME + 
+					" SET " + ADMIN_FLAG_COLUMN_NAME + " = '" + (user.isAdmin() ? "A" : "U") + 
+					"' WHERE " + USER_NAME_COLUMN_NAME + " = '" + EasyIO.sqlEscape(userName) + "';";
 			try {
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while setting admin flag for user.");
-				System.out.println("  query was " + query);
+				this.logError("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while setting admin flag for user.");
+				this.logError("  query was " + query);
 			}
 		}
 		return null;
@@ -837,14 +857,15 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 		if (user == null)
 			return "User does not exist.";
 		
-		this.usersByUserNames.remove(user.userName);
-		String query = "DELETE FROM " + USER_TABLE_NAME + " WHERE " + USER_NAME_COLUMEN_NAME + " = '" + userName + "';";
+		String query = "DELETE FROM " + USER_TABLE_NAME + 
+				" WHERE " + USER_NAME_COLUMN_NAME + " = '" + EasyIO.sqlEscape(userName) + "';";
 		try {
 			this.io.executeUpdateQuery(query);
+			this.usersByUserNames.remove(user.userName); // only delete user once we're sure he won't exist after restart
 		}
 		catch (SQLException sqle) {
-			System.out.println("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while setting admin flag for user.");
-			System.out.println("  query was " + query);
+			this.logError("UserAccessAuthority: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while deleting user.");
+			this.logError("  query was " + query);
 		}
 		return null;
 	}
@@ -868,7 +889,7 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	
 	/**
 	 * Check whether or not a user permission authority is installed. This
-	 * method is intended for checking if invocing the methods that delegate to
+	 * method is intended for checking if invoking the methods that delegate to
 	 * the user permission authority makes sense.
 	 * @return true if a user permission authority is installed, false otherwise
 	 */
@@ -913,7 +934,7 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	 * it. If no user permission authority is installed, this method returns the
 	 * specified default value. The idea is to facilitate granting specific
 	 * permissions to all users in case no user permission authority is
-	 * installed. It is up to the invocing component to decide this.
+	 * installed. It is up to the invoking component to decide this.
 	 * @param userName the user name to check the permission for
 	 * @param permission the permission to check
 	 * @param grantByDefault the value to return if no user permission authority
@@ -950,8 +971,8 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	}
 	
 	/**
-	 * Check if the user logged in on a given session has a given permission. If
-	 * isAdminSession() returns true for the specified user name, this method
+	 * Check if the user logged in on a given session has a given permission.
+	 * If isAdminSession() returns true for the specified user name, this method
 	 * returns true as well. If a user permission authority is installed, the
 	 * permission check is delegated to it. If no user permission authority is
 	 * installed, this method returns the specified default value. The idea is
@@ -1064,8 +1085,20 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	 *         administrative access, false otherwise
 	 */
 	public boolean isAdminSession(String sessionId) {
-		if (sessionId == null) return false;
+		if (sessionId == null)
+			return false;
 		else return this.isAdmin(this.getUserNameForSession(sessionId));
+	}
+	
+	/**
+	 * Check if a user with a given name is an actually authenticated user
+	 * (as opposed to a server internal one).
+	 * @param userName the user name to check
+	 * @return true if the user with the specified name is actually is an
+	 *         authenticated user, false otherwise
+	 */
+	public boolean isActualUser(String userName) {
+		return (this.getUserForName(userName) != null);
 	}
 	
 	private User getUserForName(String userName) {
@@ -1191,7 +1224,8 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 		Session session = ((sessionId == null) ? null : ((Session) this.sessionsByID.get(sessionId)));
 		
 		//	invalid session
-		if (session == null) return false;
+		if (session == null)
+			return false;
 		
 		//	valid session, remember last activity
 		session.lastActivity = System.currentTimeMillis();

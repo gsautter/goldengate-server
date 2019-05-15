@@ -39,7 +39,7 @@ import de.uka.ipd.idaho.easyIO.settings.Settings;
  * 
  * @author sautter
  */
-public abstract class AbstractGoldenGateServerComponent implements GoldenGateServerComponent {
+public abstract class AbstractGoldenGateServerComponent implements GoldenGateServerComponent, GoldenGateServerActivityLogger {
 	
 	/**
 	 * The name of the config file in this server component's data path. If this
@@ -158,9 +158,72 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	protected void exitComponent() {}
 	
 	/* (non-Javadoc)
-	 * @see de.goldenGateScf.ServerComponent#getLetterCode()
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#getLetterCode()
 	 */
 	public String getLetterCode() {
 		return this.letterCode;
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logError(java.lang.String)
+	 */
+	public void logError(String message) {
+		this.host.logError(message);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logError(java.lang.Throwable)
+	 */
+	public void logError(Throwable error) {
+		this.host.logError(error);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#getActions()
+	 */
+	public ComponentAction[] getActions() {
+		return null;
+	}
+
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logWarning(java.lang.String)
+	 */
+	public void logWarning(String message) {
+		this.host.logWarning(message);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logInfo(java.lang.String)
+	 */
+	public void logInfo(String message) {
+		this.host.logInfo(message);
+	}
+
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logDebug(java.lang.String)
+	 */
+	public void logDebug(String message) {
+		this.host.logDebug(message);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logActivity(java.lang.String)
+	 */
+	public void logActivity(String message) {
+		this.host.logActivity(message);
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logAlways(java.lang.String)
+	 */
+	public void logAlways(String message) {
+		this.host.logAlways(message);
+	}
+
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logResult(java.lang.String)
+	 */
+	public void logResult(String message) {
+		this.host.logResult(message);
 	}
 }

@@ -64,6 +64,20 @@
 	
 	
 	<servlet>
+		<servlet-name>GgServerNotificationEndpoint</servlet-name>
+		<servlet-class>de.uka.ipd.idaho.goldenGateServer.enr.client.GoldenGateEnrClientServlet</servlet-class>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>GgServerNotificationEndpoint</servlet-name>
+		<url-pattern>/notify/*</url-pattern>
+	</servlet-mapping>
+	<servlet-mapping>
+		<servlet-name>GgServerNotificationEndpoint</servlet-name>
+		<url-pattern>/notify</url-pattern>
+	</servlet-mapping>
+	
+	
+	<servlet>
 		<servlet-name>DownloadsServlet</servlet-name>
 		<servlet-class>de.uka.ipd.idaho.goldenGateServer.utilities.DownloadServlet</servlet-class>
 		<init-param>

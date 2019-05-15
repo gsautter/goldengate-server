@@ -1,3 +1,5 @@
+host-Fr1D = "https://srv1.plazi.org/GgServer/Downloads";
+host-Fr1U = "https://srv1.plazi.org/GgServer/Updates";
 host-Bo1D = "http://plazi.cs.umb.edu/GgServer/Downloads";
 host-Bo1U = "http://plazi.cs.umb.edu/GgServer/Updates";
 host-Bo2D = "http://plazi2.cs.umb.edu/GgServer/Downloads";

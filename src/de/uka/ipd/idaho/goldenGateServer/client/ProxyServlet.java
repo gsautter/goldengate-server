@@ -61,7 +61,6 @@ public class ProxyServlet extends GgServerClientServlet implements GoldenGateSer
 	 * @see javax.servlet.http.HttpServlet#doPost(javax.servlet.http.HttpServletRequest, javax.servlet.http.HttpServletResponse)
 	 */
 	protected void doPost(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
-		
 		InputStream requestIn = null;
 		OutputStream responseOut = null;
 		Connection con = null;

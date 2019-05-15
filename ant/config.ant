@@ -33,6 +33,12 @@
 	<property name="jar.serverextender" value="${dist.home}/Installer.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
+	<property name="jar.aaa" value="${dist.home}/Components/GgServerAAA.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.aep" value="${dist.home}/Components/GgServerAEP.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
 	<property name="jar.res" value="${dist.home}/Components/GgServerRES.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
@@ -43,6 +49,9 @@
 	
 	<!-- path to the .jar file that shall be created -->
 	<property name="jar.ups" value="${dist.home}/Components/GgServerUPS.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.enr" value="${dist.home}/Components/GgServerENR.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
 	<property name="jar.serverconsole" value="${dist.home}/GgServerConsole.jar" />
@@ -62,7 +71,16 @@
 	<property name="jar.webappextender" value="${dist.home}/Extender.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
+	<property name="jar.authwebapi" value="${dist.home}/WEB-INF/lib/AuthenticatedApiClient.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.enrclient" value="${dist.home}/WEB-INF/lib/GgServerEnrClient.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
 	<property name="jar.authwebclient" value="${dist.home}/WEB-INF/lib/AuthenticatedWebClient.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.aaamodul" value="${dist.home}/WEB-INF/managerData/Moduls/ApiTokenManagerModul.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
 	<property name="jar.uaamodul" value="${dist.home}/WEB-INF/managerData/Moduls/UserManagerModul.jar" />

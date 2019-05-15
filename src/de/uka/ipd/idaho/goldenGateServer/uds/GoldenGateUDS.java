@@ -253,16 +253,14 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 			public String getActionCommand() {
 				return UPDATE_FIELDS_COMMAND;
 			}
-
 			public String[] getExplanation() {
 				String[] explanation = { UPDATE_FIELDS_COMMAND, "Reload the field set definitions." };
 				return explanation;
 			}
-
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0)
 					readFieldSets();
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);

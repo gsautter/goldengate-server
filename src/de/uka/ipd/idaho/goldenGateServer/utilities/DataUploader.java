@@ -68,6 +68,7 @@ import javax.swing.event.TableModelListener;
 import javax.swing.table.TableModel;
 
 import de.uka.ipd.idaho.easyIO.settings.Settings;
+import de.uka.ipd.idaho.easyIO.utilities.ApplicationHttpsEnabler;
 import de.uka.ipd.idaho.goldenGate.GoldenGateConstants;
 import de.uka.ipd.idaho.htmlXmlUtil.Parser;
 import de.uka.ipd.idaho.htmlXmlUtil.TokenReceiver;
@@ -488,6 +489,20 @@ public class DataUploader extends JFrame implements GoldenGateConstants {
 		String host = ((String) JOptionPane.showInputDialog(null, "Select the host to connect to.", "Select Host", JOptionPane.PLAIN_MESSAGE, null, hosts.toStringArray(), hosts.get(0)));
 		if (host == null)
 			return;
+		
+		//	enable HTTPS if required
+		if (host.toLowerCase().startsWith("https://")) {
+			File certFolder = new File("./HttpsCerts");
+			certFolder.mkdirs();
+			ApplicationHttpsEnabler https = new ApplicationHttpsEnabler(certFolder, true, false);
+			try {
+				https.init();
+			}
+			catch (IOException ioe) {
+				System.out.println("Could not initialize HTTPS: " + ioe.getMessage());
+				ioe.printStackTrace(System.out);
+			}
+		}
 		
 		String folderName = host;
 		while (folderName.endsWith("/"))

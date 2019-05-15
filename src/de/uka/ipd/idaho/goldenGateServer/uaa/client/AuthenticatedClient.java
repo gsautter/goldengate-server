@@ -33,9 +33,8 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 
 import de.uka.ipd.idaho.goldenGateServer.client.ServerConnection;
 import de.uka.ipd.idaho.goldenGateServer.client.ServerConnection.Connection;
@@ -59,7 +58,7 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	private String sessionId = null;
 	
 	private boolean useDefaultPermissions = false;
-	private Set permissions = null;
+	private LinkedHashSet permissions = null;
 	
 	/** Constructor
 	 * @param	sCon	the connection to the server to communicate with
@@ -132,8 +131,8 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	/**
 	 * Test whether or not the Connections returned by the ServerConnections
 	 * backing this AuthenticatedClient are plain socket connections, or
-	 * something else, eg tunneled through HTTP. This gives a hint towards
-	 * wherther or not the connections can time out somewhere between client and
+	 * something else, e.g. tunneled through HTTP. This gives a hint towards
+	 * whether or not the connections can time out somewhere between client and
 	 * server.
 	 * @return true if the Connections returned by the backing ServerConnections
 	 *         are plain socket connections, false otherwise
@@ -269,7 +268,7 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 				this.userName = userName;
 				this.password = password;
 				
-				this.permissions = new TreeSet();
+				this.permissions = new LinkedHashSet();
 				String permission;
 				while ((permission = br.readLine()) != null)
 					this.permissions.add(permission);
@@ -357,7 +356,7 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 		}
 	}
 	
-	//	client pool to allow sharing sessions between different objects in the same virtual machine
+	//	client pool for sharing sessions between different objects in the same virtual machine
 	private static Map authenticatedClientPool = Collections.synchronizedMap(new HashMap());
 	
 	/**
@@ -377,12 +376,12 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	 * remote address the specified server connection point to was created
 	 * earlier through this method, this very instance is returned. If it is
 	 * already logged in, it can be used without further login activity. This
-	 * functionality is for sharing authentication and session among a series of
-	 * more specific clients in one virtual machine. However, it should be used
-	 * only in (client side) scenarios, and if it is sure that only one user
-	 * will work on the same virtual machine at a time. It should not be used in
-	 * a servlet, for instance, where multiple users may be active at the same
-	 * time, and should have distinct sessions in the backing server.
+	 * functionality is for sharing authentication and session among a series
+	 * of more specific clients in one virtual machine. However, it should be
+	 * used only in client side scenarios, and if it is sure that only one user
+	 * will work on the same virtual machine at a time. It should not be used
+	 * in a servlet, for instance, where multiple users may be active at the
+	 * same time, and should have distinct sessions in the backing server.
 	 * @param sCon the ServerConnection to use
 	 * @param allowPool allow using an existing authenticated client for the
 	 *            remote address the specified server connection point to, which

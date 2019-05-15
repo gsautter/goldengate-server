@@ -20,17 +20,20 @@
 	</path>
 	
 	<!-- The task off all tasks -->
-	<target name="compile" depends="compileSvr,compileClt,compileWeb" description="Compile GoldenGATE Server Java sources">
+	<target name="compile" depends="compileSrv,compileClt,compileWeb" description="Compile GoldenGATE Server Java sources">
 		<!-- only proxy for three compile tasks -->
 	</target>
 	
 	<!-- Compile backend server core and components -->
-	<target name="compileSvr" description="Compile GoldenGATE Server backend Java sources">
+	<target name="compileSrv" description="Compile GoldenGATE Server backend Java sources">
 		
 	    <!-- Compile Java classes as necessary -->
 	    <javac destdir="${build.home}/classes" includeantruntime="false" target="1.5" debug="true" debuglevel="lines,vars,source">
 	    	<src path="${src.home}" />
     		<include name="**/goldenGateServer/*.java" />
+    		<include name="**/goldenGateServer/aaa/*.java" />
+    		<include name="**/goldenGateServer/aep/*.java" />
+    		<include name="**/goldenGateServer/enr/*.java" />
     		<include name="**/goldenGateServer/res/*.java" />
     		<include name="**/goldenGateServer/uaa/*.java" />
     		<include name="**/goldenGateServer/uaa/data/*.java" />
@@ -69,6 +72,11 @@
     		<include name="**/goldenGateServer/GoldenGateServerEventService.java" />
     		<include name="**/goldenGateServer/client/*.java" />
     		<include name="**/goldenGateServer/util/Base64*.java" />
+    		<include name="**/goldenGateServer/aaa/ApiAccessAuthortityConstants.java" />
+ 			<include name="**/goldenGateServer/aaa/client/*.java" />
+ 			<include name="**/goldenGateServer/aaa/webClient/*.java" />
+    		<include name="**/goldenGateServer/enr/GoldenGateEnrConstants.java" />
+ 			<include name="**/goldenGateServer/enr/client/*.java" />
 			<include name="**/goldenGateServer/uaa/UserAccessAuthortityConstants.java" />
  			<include name="**/goldenGateServer/uaa/client/AuthenticatedClient.java" />
  			<include name="**/goldenGateServer/uaa/client/UserAccessAuthorityClient.java" />

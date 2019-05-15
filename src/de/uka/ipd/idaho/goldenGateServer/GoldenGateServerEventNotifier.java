@@ -29,6 +29,7 @@ package de.uka.ipd.idaho.goldenGateServer;
 
 import java.util.LinkedList;
 
+import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActionConsole;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants.GoldenGateServerEvent;
 
 /**
@@ -51,6 +52,8 @@ public class GoldenGateServerEventNotifier {
 	public GoldenGateServerEventNotifier(String name) {
 		this.eventNotifier = new EventNotifier(name);
 		this.eventNotifier.start();
+		//	TODO restore events from database
+		//	TODO keep in mind: prepareEventNotification() will load the bulky data
 	}
 	
 	/**
@@ -71,13 +74,16 @@ public class GoldenGateServerEventNotifier {
 			this.eventQueue.addLast(gse); // enqueue event for asynchronous notification
 			this.eventQueue.notify(); // wake up notifier thread
 		}
+		//	TODO persist events in database
+		//	TODO add serialization overwritable method
+		//	TODO keep in mind: prepareEventNotification() will load the bulky data
 	}
 	
 	/**
 	 * Prepare an event for notification. This method allows client code to
 	 * load bulky event content on demand right before event notification
 	 * starts, instead of having that bulky content pile up in the event
-	 * queue. this default implementation returns the argument event, sub
+	 * queue. This default implementation returns the argument event, sub
 	 * classes are welcome to overwrite it as needed.
 	 * @param gse the GoldenGATE Server event to prepare for notification
 	 * @return the prepared event
@@ -93,6 +99,33 @@ public class GoldenGateServerEventNotifier {
 	 */
 	public int getQueueSize() {
 		return this.eventQueue.size();
+	}
+	
+	/**
+	 * Retrieve a console action for checking the number of pending events
+	 * enqueued for notification in this queue. The command for the returned
+	 * action is 'eventsPending'.
+	 * @return the console action
+	 */
+	public ComponentActionConsole getQueueSizeAction() {
+		return new QueueSizeAction();
+	}
+	private class QueueSizeAction extends ComponentActionConsole {
+		public String getActionCommand() {
+			return "eventsPending";
+		}
+		public String[] getExplanation() {
+			String[] explanation = {
+					"eventsPending",
+					"Display the number of pending events enqueued for notification."
+				};
+			return explanation;
+		}
+		public void performActionConsole(String[] arguments) {
+			if (arguments.length == 0)
+				System.out.println(" There are currently " + eventQueue.size() + " events enqueued for notification.");
+			else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no argument.");
+		}
 	}
 	
 	private LinkedList eventQueue = new LinkedList();

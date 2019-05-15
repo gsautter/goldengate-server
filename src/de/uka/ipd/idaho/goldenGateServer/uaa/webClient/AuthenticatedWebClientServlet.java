@@ -53,13 +53,13 @@ import de.uka.ipd.idaho.stringUtils.StringVector;
 /**
  * Servlet for interactions with the backing server that require authentication
  * via a UserAccessAuthority. This servlet handles the login procedure and then
- * loops the requests through to plug-in moduls.
+ * loops the requests through to plug-in modules.
  * 
  * @author sautter
  */
 public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implements AuthenticatedWebClientConstants, UserAccessAuthorityConstants {
 	
-	/** the name of the GoldenGATE Server backed authentication source this servlet registers with the WebApp Host */
+	/** the name of the GoldenGATE Server backed user authentication source this servlet registers with the WebApp Host */
 	public static final String GOLDEN_GATE_SERVER_AUTHENTICATION_PROVIDER_NAME = "GgServer";
 	
 	private AuthenticatedWebClientModul[] clientModuls = new AuthenticatedWebClientModul[0];
@@ -152,8 +152,6 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			//	get login parameters
 			String userName = request.getParameter(this.getName() + "_" + USER_NAME_PARAMETER);
 			String password = request.getParameter(this.getName() + "_" + PASSWORD_PARAMETER);
-			System.out.println(" - username is " + userName);
-			System.out.println(" - password is " + password);
 			
 			//	not a login request, at least not for this authentication provider
 			if ((userName == null) || (password == null))
@@ -389,7 +387,7 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 			pageBuilder.writeLine("  if (cpi != null)");
 			pageBuilder.writeLine("    cpi.value = '';");
 			pageBuilder.writeLine("}");
-			 
+			
 			pageBuilder.writeLine("</script>");
 		}
 		public String getAccountManagerOnclickCall() {

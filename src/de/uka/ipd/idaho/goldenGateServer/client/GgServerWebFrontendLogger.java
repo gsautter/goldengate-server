@@ -34,7 +34,7 @@ import java.io.PrintStream;
 import java.util.Properties;
 
 /**
- * Logger for requests to a GoldenGATE Server web frontend. This class is
+ * Logger for requests to a GoldenGATE Server web front-end. This class is
  * initialized by IndexServlet, so the latter has to be part of the web-app for
  * this logging class to log to a file. Otherwise, the logging messages to to
  * System.out.
@@ -42,7 +42,6 @@ import java.util.Properties;
  * @author sautter
  */
 public class GgServerWebFrontendLogger {
-	
 	private static Properties sessionsToUsers = new Properties();
 	private static Properties usersToSessions = new Properties();
 	private static Properties sessionsToAddresses = new Properties();

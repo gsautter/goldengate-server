@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -90,6 +91,10 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	private static Settings ioProviderSettings = new Settings();
 	private static Settings environmentSettings = new Settings();
 	private static boolean environmentSettingsModified = false;
+	
+	private static int logLevelNetwork = GoldenGateServerActivityLogger.LOG_LEVEL_WARNING;
+	private static int logLevelConsole = GoldenGateServerActivityLogger.LOG_LEVEL_INFO;
+	private static int logLevelBackground = GoldenGateServerActivityLogger.LOG_LEVEL_INFO;
 	
 	/**	
 	 * @return an IoProvider for accessing the SRS's database
@@ -286,33 +291,13 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		System.out.println("   - components loaded");
 		
 		//	initialize and register components
+		ComponentHost componentHost = new ComponentHost();
 		ArrayList serverComponentList = new ArrayList();
 		ArrayList serverComponentLoadErrorList = new ArrayList();
 		for (int c = 0; c < loadedServerComponents.length; c++)
 			try {
 				System.out.println("   - initializing " + loadedServerComponents[c].getLetterCode());
-				loadedServerComponents[c].setHost(new GoldenGateServerComponentHost() {
-					public IoProvider getIoProvider() {
-						return GoldenGateServer.getIoProvider();
-					}
-					public String getServerProperty(String name) {
-						return ((name == null) ? null : environmentSettings.getSetting(name));
-					}
-					public boolean isRequestProxied() {
-						synchronized (proxiedServiceThreadIDs) {
-							return proxiedServiceThreadIDs.contains(new Long(Thread.currentThread().getId()));
-						}
-					}
-					public GoldenGateServerComponent getServerComponent(String className) {
-						return GoldenGateServerComponentRegistry.getServerComponent(className);
-					}
-					public GoldenGateServerComponent[] getServerComponents(String className) {
-						return GoldenGateServerComponentRegistry.getServerComponents(className);
-					}
-					public GoldenGateServerComponent[] getServerComponents() {
-						return GoldenGateServerComponentRegistry.getServerComponents();
-					}
-				});
+				loadedServerComponents[c].setHost(componentHost);
 				loadedServerComponents[c].init();
 				System.out.println("   - " + loadedServerComponents[c].getLetterCode() + " initialized");
 				serverComponentList.add(loadedServerComponents[c]);
@@ -394,8 +379,11 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				for (int a = 0; a < componentActions.length; a++) {
 					if (componentActions[a] instanceof ComponentActionConsole)
 						componentActionSet.put(componentActions[a].getActionCommand(), componentActions[a]);
-					if (componentActions[a] instanceof ComponentActionNetwork)
+					if (componentActions[a] instanceof ComponentActionNetwork) {
+						if (serverComponentActions.containsKey(componentActions[a].getActionCommand()))
+							throw new RuntimeException("Duplicate network action '" + componentActions[a].getActionCommand() + "'");
 						serverComponentActions.put(componentActions[a].getActionCommand(), componentActions[a]);
+					}
 				}
 			
 			if (componentActionSet.size() != 0)
@@ -423,8 +411,96 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		else System.exit(0);
 	}
 	
+	private static class ComponentHost implements GoldenGateServerComponentHost {
+		public IoProvider getIoProvider() {
+			return GoldenGateServer.getIoProvider();
+		}
+		
+		public String getServerProperty(String name) {
+			return ((name == null) ? null : environmentSettings.getSetting(name));
+		}
+		
+		public boolean isRequestProxied() {
+			synchronized (proxiedServiceThreadIDs) {
+				return proxiedServiceThreadIDs.contains(Long.valueOf(Thread.currentThread().getId()));
+			}
+		}
+		public boolean isClientRequest() {
+			return (Thread.currentThread() instanceof ServiceThread);
+		}
+
+		public GoldenGateServerComponent getServerComponent(String className) {
+			return GoldenGateServerComponentRegistry.getServerComponent(className);
+		}
+		public GoldenGateServerComponent[] getServerComponents(String className) {
+			return GoldenGateServerComponentRegistry.getServerComponents(className);
+		}
+		public GoldenGateServerComponent[] getServerComponents() {
+			return GoldenGateServerComponentRegistry.getServerComponents();
+		}
+		
+		public void logError(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logError(message);
+			else log(message, LOG_LEVEL_ERROR, logLevelBackground);
+		}
+		public void logError(Throwable error) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logError(error);
+			else log(error, LOG_LEVEL_ERROR, logLevelBackground);
+		}
+		public void logWarning(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logWarning(message);
+			else log(message, LOG_LEVEL_WARNING, logLevelBackground);
+		}
+		public void logInfo(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logInfo(message);
+			else log(message, LOG_LEVEL_INFO, logLevelBackground);
+		}
+		public void logDebug(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logDebug(message);
+			else log(message, LOG_LEVEL_DEBUG, logLevelBackground);
+		}
+		public void logActivity(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logActivity(message);
+		}
+		public void logAlways(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logAlways(message);
+			else log(message, -1, logLevelBackground);
+		}
+		public void logResult(String message) {
+			Thread ct = Thread.currentThread();
+			if (ct instanceof GoldenGateServerActivityLogger)
+				((GoldenGateServerActivityLogger) ct).logResult(message);
+			else log(message, LOG_LEVEL_INFO, logLevelBackground);
+		}
+	}
+	
+	private static void log(String message, int messageLogLevel, int contextLogLevel) {
+		if (messageLogLevel <= contextLogLevel)
+			System.out.println(message);
+	}
+	
+	private static void log(Throwable error, int messageLogLevel, int contextLogLevel) {
+		if (messageLogLevel <= contextLogLevel)
+			error.printStackTrace(System.out);
+	}
+	
 	private static synchronized void stop() {
-		if (!isRunning()) return;
+		if (!isRunning())
+			return;
 		System.out.println("GoldenGATE Server shutting down:");
 		
 		//	close console
@@ -484,7 +560,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		return (serverThread != null);
 	}
 	
-	private static HashMap serverComponentActions = new HashMap();
+	private static Map serverComponentActions = Collections.synchronizedMap(new HashMap());
 	
 	private static class ServerThread extends Thread {
 		private ServerSocket serverSocket;
@@ -494,7 +570,6 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		}
 		
 		public void run() {
-			
 			try {
 				//	create and open server socket
 				ServerSocket ss = new ServerSocket();
@@ -511,8 +586,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				while (this.serverSocket != null) try {
 					
 					//	wait for incoming connections
-					final Socket socket = serverSocket.accept();
-					
+					Socket socket = serverSocket.accept();
 					socket.setSoTimeout(networkInterfaceTimeout);
 					
 					//	create streams
@@ -534,75 +608,23 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					
 					//	process request
 					else st.service(new ServiceRequest(socket, requestIn, responseOut));
-//					
-//					//	process request
-//					else st.service(new Runnable() {
-//						public void run() {
-//							try {
-//								//	read command
-//								String command = requestIn.readLine();
-//								System.out.println("Command is " + command);
-//								
-//								//	catch 'PROXIED' property
-//								if ("PROXIED".equals(command)) {
-//									synchronized (proxiedServiceThreadIDs) {
-//										proxiedServiceThreadIDs.add(new Long(Thread.currentThread().getId()));
-//									}
-//									command = requestIn.readLine();
-//									System.out.println("Command is " + command);
-//								}
-//								
-//								//	get action
-//								ComponentActionNetwork action = ((ComponentActionNetwork) serverComponentActions.get(command));
-//								
-//								//	invalid action, send error
-//								if (action == null) {
-//									responseOut.write("Invalid action '" + command + "'");
-//									responseOut.newLine();
-//								}
-//								
-//								//	action found
-//								else action.performActionNetwork(requestIn, responseOut);
-//								
-//								//	send response
-//								responseOut.flush();
-//								responseOut.close();
-//							}
-//							catch (Exception e) {
-//								System.out.println("Error handling request - " + e.getMessage());
-//								e.printStackTrace(System.out);
-//							}
-//							finally {
-//								try {
-//									socket.close();
-//								}
-//								catch (Exception e) {
-//									System.out.println("Error finishing request - " + e.getMessage());
-//									e.printStackTrace(System.out);
-//								}
-//								synchronized (proxiedServiceThreadIDs) {
-//									proxiedServiceThreadIDs.remove(new Long(Thread.currentThread().getId()));
-//								}
-//							}
-//						}
-//					});
 				}
 				
 				//	catch Exceptions caused by singular incoming connection requests
-				catch (Exception e) {
-					if ("socket closed".equals(e.getMessage()))
+				catch (Throwable t) {
+					if ("socket closed".equals(t.getMessage()))
 						System.out.println("Server socket closed.");
 					else {
-						System.out.println("Error handling request - " + e.getMessage());
-						e.printStackTrace(System.out);
+						System.out.println("Error handling request - " + t.getMessage());
+						t.printStackTrace(System.out);
 					}
 				}
 			}
 			
 			//	shut down if the server socket couldn't be opened
-			catch (Exception e) {
-				System.out.println("Error creating server socket: " + e.getMessage());
-				e.printStackTrace(System.out);
+			catch (Throwable t) {
+				System.out.println("Error creating server socket: " + t.getMessage());
+				t.printStackTrace(System.out);
 				
 				//	notify if startup fails
 				synchronized (this) {
@@ -629,15 +651,36 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		}
 	}
 	
-	private static Set proxiedServiceThreadIDs = new HashSet();
+	private static Set proxiedServiceThreadIDs = Collections.synchronizedSet(new HashSet());
 	
-	private static class ServiceThread extends Thread {
+	private static abstract class LoggingThread extends Thread implements GoldenGateServerActivityLogger {
+		LoggingThread(String name) {
+			super(name);
+		}
+		public void logError(String message) {
+			this.log(message, LOG_LEVEL_ERROR);
+		}
+		public void logWarning(String message) {
+			this.log(message, LOG_LEVEL_WARNING);
+		}
+		public void logInfo(String message) {
+			this.log(message, LOG_LEVEL_INFO);
+		}
+		public void logDebug(String message) {
+			this.log(message, LOG_LEVEL_DEBUG);
+		}
+		public void logAlways(String message) {
+			this.log(message, -1);
+		}
+		abstract void log(String message, int messageLogLevel);
+	}
+	
+	private static class ServiceThread extends LoggingThread {
 		
 		private final Object lock = new Object();
-		
-//		private Runnable request = null;
-		private ServiceRequest request = null;
 		private boolean keepRunning = true;
+		
+		private ServiceRequest request = null;
 		
 		ServiceThread() {
 			super("GgServerServiceThread-" + (serviceThreadList.size() + 1));
@@ -658,16 +701,19 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				
 				//	execute action if given
 				if (this.request != null) try {
-//					this.request.run();
-					this.request.execute();
+					this.request.execute(this);
 				}
+				
+				//	catch whatever might go wrong
 				catch (Throwable t) {
 					System.out.println("Error handling request - " + t.getClass().getName() + " (" + t.getMessage() + ")");
 					t.printStackTrace(System.out);
 				}
 				
-				//	clear action
-				this.request = null;
+				//	clean up
+				finally {
+					this.request = null;
+				}
 				
 				//	re-enqueue if not shut down ...
 				if (this.keepRunning)
@@ -685,13 +731,6 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 					}
 			}
 		}
-//		
-//		void service(Runnable request) {
-//			synchronized(lock) {
-//				this.request = request;
-//				this.lock.notifyAll();
-//			}
-//		}
 		
 		void service(ServiceRequest request) {
 			synchronized(lock) {
@@ -711,41 +750,56 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				this.lock.notifyAll();
 			}
 		}
+		
+		public void logError(Throwable error) {
+			GoldenGateServer.log(error, LOG_LEVEL_ERROR, logLevelNetwork);
+		}
+		public void logActivity(String message) {
+			if (this.request == null)
+				this.log(message, LOG_LEVEL_WARNING); // something is hinky, so generally go for warning
+			else this.request.logActivity(message); // run this past request (we don't want to count any waiting time)
+		}
+		public void logResult(String message) {
+			this.logInfo(message); // treat results as information level messages in network activity
+		}
+		void log(String message, int messageLogLevel) {
+			GoldenGateServer.log(message, messageLogLevel, logLevelNetwork);
+		}
 	}
 	
 	private static class ServiceRequest {
+		
 		private Socket socket;
 		private BufferedLineInputStream requestIn;
 		private BufferedLineOutputStream responseOut;
+		
+		private long activityLogStart = -1;
+		private long activityLogEnd = -1;
+		private ArrayList activityLogMessages = null;
+		
 		ServiceRequest(Socket socket, BufferedLineInputStream requestIn, BufferedLineOutputStream responseOut) {
 			this.socket = socket;
 			this.requestIn = requestIn;
 			this.responseOut = responseOut;
 		}
-		void execute() {
-			Thread thread = Thread.currentThread();
+		
+		void execute(ServiceThread thread) throws Exception {
 			Long threadId = new Long(thread.getId());
 			ServiceAction threadAction = null;
 			try {
 				
 				//	read command
 				String command = this.requestIn.readLine();
-				System.out.println("Command is " + command);
+				thread.logAlways("Command is " + command);
 				
 				//	catch 'PROXIED' property
 				if ("PROXIED".equals(command)) {
-					synchronized (proxiedServiceThreadIDs) {
-						proxiedServiceThreadIDs.add(threadId);
-					}
+					proxiedServiceThreadIDs.add(threadId);
 					command = this.requestIn.readLine();
-					System.out.println("Command is " + command);
+					thread.logAlways("Command is " + command);
 				}
 				
-				//	mark action as running
-				threadAction = new ServiceAction(command, thread.getName());
-				synchronized (runningServiceActions) {
-					runningServiceActions.add(threadAction);
-				}
+				//	TODO split headers off action command, starting at first '<'
 				
 				//	get action
 				ComponentActionNetwork action = ((ComponentActionNetwork) serverComponentActions.get(command));
@@ -757,57 +811,161 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				}
 				
 				//	action found
-				else action.performActionNetwork(this.requestIn, this.responseOut);
+				else {
+					
+					//	mark action as running
+					threadAction = new ServiceAction(command, thread.getName());
+					
+					//	TODO once we introduce headers, maybe read them here, and store in thread locale
+					
+					//	report action as running (this will queue us up and wait if too many other requests are on same action)
+					startServiceAction(threadAction);
+					
+					//	set up activity logging
+					this.activityLogStart = System.currentTimeMillis();
+					long activityLogTimeout = action.getActivityLogTimeout();
+					this.activityLogEnd = ((activityLogTimeout < 0) ? Long.MAX_VALUE : (this.activityLogStart + activityLogTimeout));
+					this.activityLogMessages = new ArrayList();
+					
+					//	perform action
+					action.performActionNetwork(this.requestIn, this.responseOut);
+				}
 				
 				//	send response
 				this.responseOut.flush();
 				this.responseOut.close();
 			}
-			catch (Exception e) {
-				System.out.println("Error handling request - " + e.getMessage());
-				e.printStackTrace(System.out);
-			}
 			finally {
-				try {
-					this.socket.close();
-				}
-				catch (Exception e) {
-					System.out.println("Error finishing request - " + e.getMessage());
-					e.printStackTrace(System.out);
-				}
-				synchronized (proxiedServiceThreadIDs) {
-					proxiedServiceThreadIDs.remove(threadId);
-				}
-				synchronized (runningServiceActions) {
-					runningServiceActions.remove(threadAction); // catching null inside remove()
-				}
+				proxiedServiceThreadIDs.remove(threadId);
+				finishServiceAction(threadAction);
+				this.socket.close();
 			}
+		}
+		
+		void logActivity(String message) {
+			
+			//	log level debug, output message right away
+			if (GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG <= logLevelNetwork) {
+				log(message, GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG, logLevelNetwork);
+				return;
+			}
+			
+			//	create time prefix
+			long time = System.currentTimeMillis();
+			int runTime = ((int) ((time - this.activityLogStart) & 0x7FFFFFFF));
+			
+			//	before debug log timeout, store message if we can
+			if (time < this.activityLogEnd) {
+				if (this.activityLogMessages == null)
+					log((runTime + "ms: " + message), GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG, logLevelNetwork);
+				else this.activityLogMessages.add(runTime + "ms: " + message);
+				return;
+			}
+			
+			//	write through collected messages as warnings after timeout expired (if not done before)
+			if (this.activityLogMessages != null) {
+				for (int m = 0; m < this.activityLogMessages.size(); m++)
+					log(((String) this.activityLogMessages.get(m)), GoldenGateServerActivityLogger.LOG_LEVEL_WARNING, logLevelNetwork);
+				this.activityLogMessages = null;
+			}
+			
+			//	this message now has warning level
+			log((runTime + "ms: " + message), GoldenGateServerActivityLogger.LOG_LEVEL_WARNING, logLevelNetwork);
 		}
 	}
 	
 	private static class ServiceAction implements Comparable {
-		private final long start;
-		private final String command;
-		private final String threadName;
+		final long startTime;
+		final String command;
+		final String threadName;
+		private String status = "running";
+		private long waited = -1;
+		private long started;
 		ServiceAction(String command, String threadName) {
-			this.start = System.currentTimeMillis();
+			this.startTime = System.currentTimeMillis();
 			this.command = command;
 			this.threadName = threadName;
+			this.started = this.startTime;
+		}
+		synchronized void suspend() throws InterruptedException {
+			this.status = "waiting";
+			this.wait();
+		}
+		synchronized void resume() {
+			this.status = "running";
+			long ctm = System.currentTimeMillis();
+			this.waited = (ctm - this.started);
+			this.started = ctm;
+			this.notify();
 		}
 		public int compareTo(Object obj) {
 			ServiceAction sa = ((ServiceAction) obj);
-			return ((this.start == sa.start) ? this.threadName.compareTo(sa.threadName) : ((int) (this.start - sa.start)));
+			return ((this.startTime == sa.startTime) ? this.threadName.compareTo(sa.threadName) : ((int) (this.startTime - sa.startTime)));
 		}
 		public String toString() {
-			return (" - " + this.command + " (running since " + (System.currentTimeMillis() - this.start) + "ms)");
+			return (" - " + this.command + " (" + this.status + " since " + (System.currentTimeMillis() - this.started) + "ms" + ((this.waited == -1) ? "" : (" after waiting for " + this.waited + "ms")) + ")");
 		}
 	}
 	
-	private static Set runningServiceActions = new TreeSet() {
-		public boolean remove(Object obj) {
-			return ((obj != null) && super.remove(obj));
+	private static Set activeServiceActions = Collections.synchronizedSet(new TreeSet());
+	
+	private static Map serviceActionCoordinators = Collections.synchronizedMap(new HashMap() {
+		public Object get(Object key) {
+			Object value = super.get(key);
+			if (value == null) {
+				value = new ServiceActionCoordinator();
+				this.put(key, value);
+			}
+			return value;
 		}
-	};
+	});
+	
+	private static void startServiceAction(ServiceAction sa) throws InterruptedException {
+		if (sa != null)
+			((ServiceActionCoordinator) serviceActionCoordinators.get(sa.command)).startServiceAction(sa);
+	}
+	
+	private static void finishServiceAction(ServiceAction sa) {
+		if (sa != null)
+			((ServiceActionCoordinator) serviceActionCoordinators.get(sa.command)).finishServiceAction(sa);
+	}
+	
+	private static class ServiceActionCoordinator {
+		private TreeSet runningActions = new TreeSet();
+		private LinkedList queuedActions = new LinkedList();
+		void startServiceAction(ServiceAction sa) throws InterruptedException {
+			sa = this.doStartServiceAction(sa);
+			if (sa != null)
+				sa.suspend();
+			//	we need to release the monitor on the coordinator before suspending on the one of the action
+		}
+		private synchronized ServiceAction doStartServiceAction(ServiceAction sa) throws InterruptedException {
+			activeServiceActions.add(sa);
+			if (this.runningActions.size() < 4) { // TODO make this threshold configurable
+				this.runningActions.add(sa);
+				return null;
+			}
+			else {
+				this.queuedActions.addLast(sa);
+				return sa;
+			}
+		}
+		void finishServiceAction(ServiceAction sa) {
+			sa = this.doFinishServiceAction(sa);
+			if (sa != null)
+				sa.resume();
+			//	we need to release the monitor on the coordinator before acquiring the one on the action
+		}
+		private synchronized ServiceAction doFinishServiceAction(ServiceAction sa) {
+			activeServiceActions.remove(sa);
+			this.runningActions.remove(sa);
+			if (this.queuedActions.isEmpty())
+				return null;
+			sa = ((ServiceAction) this.queuedActions.removeFirst());
+			this.runningActions.add(sa);
+			return sa;
+		}
+	}
 	
 	private static LinkedList serviceThreadList = new LinkedList(); 
 	private static LinkedList serviceThreadQueue = new LinkedList();
@@ -837,6 +995,7 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	private static final String POOL_SIZE_COMMAND = "poolSize";
 	private static final String ACTIONS_COMMAND = "actions";
 	private static final String SET_COMMAND = "set";
+	private static final String SET_LOG_LEVEL_COMMAND = "setLogLevel";
 	
 	private static ComponentActionConsole[] getLocalActions() {
 		ArrayList cal = new ArrayList();
@@ -850,14 +1009,14 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			public String[] getExplanation() {
 				String[] explanation = {
 						EXIT_COMMAND,
-						"Exit GoldenGATE Component Server, shutting down the server itself and all embedded server components."
+						"Exit GoldenGATE Component Server, shutting down the server proper as well as all embedded server components."
 					};
 				return explanation;
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0)
 					System.exit(0);
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);
@@ -876,11 +1035,11 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0) {
-					System.out.println("These " + serverComponents.length + " components are currently plugged into this GoldenGATE Component Server:");
+					this.reportResult("These " + serverComponents.length + " components are currently plugged into this GoldenGATE Component Server:");
 					for (int c = 0; c < serverComponents.length; c++)
-						System.out.println("  '" + serverComponents[c].getLetterCode() + "': " + serverComponents[c].getClass().getName());
+						this.reportResult("  '" + serverComponents[c].getLetterCode() + "': " + serverComponents[c].getClass().getName());
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);
@@ -900,14 +1059,14 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0) {
 					if (serverComponentLoadErrors.length == 0)
-						System.out.println("No errors occurred while loading server components.");
+						this.reportResult("No errors occurred while loading server components.");
 					else {
-						System.out.println("These " + serverComponentLoadErrors.length + " errors occurred while loading server components:");
+						this.reportResult("These " + serverComponentLoadErrors.length + " errors occurred while loading server components:");
 						for (int c = 0; c < serverComponentLoadErrors.length; c++)
-							System.out.println("  " + serverComponentLoadErrors[c]);
+							this.reportResult("  " + serverComponentLoadErrors[c]);
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);
@@ -926,8 +1085,8 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0)
-					System.out.println("There are currently " + serviceThreadList.size() + " service threads, " + serviceThreadQueue.size() + " of them idle");
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+					this.reportResult("There are currently " + serviceThreadList.size() + " service threads, " + serviceThreadQueue.size() + " of them idle");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);
@@ -946,13 +1105,13 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length != 0) {
-					System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 					return;
 				}
-				synchronized (runningServiceActions) {
-					System.out.println("There are currently " + runningServiceActions.size() + " actions running:");
-					for (Iterator sait = runningServiceActions.iterator(); sait.hasNext();)
-						System.out.println(sait.next().toString());
+				synchronized (activeServiceActions) {
+					this.reportResult("There are currently " + activeServiceActions.size() + " active actions:");
+					for (Iterator sait = activeServiceActions.iterator(); sait.hasNext();)
+						this.reportResult(sait.next().toString());
 				}
 			}
 		};
@@ -979,11 +1138,11 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				if (arguments.length == 0) {
 					String[] names = environmentSettings.getKeys();
 					if (names.length == 0)
-						System.out.println("Currently, no environment variables are set.");
+						this.reportResult("Currently, no environment variables are set.");
 					else {
-						System.out.println("These environment variables are currently set:");
+						this.reportResult("These environment variables are currently set:");
 						for (int n = 0; n < names.length; n++)
-							System.out.println("  " + names[n] + " = " + environmentSettings.getSetting(names[n]));
+							this.reportResult("  " + names[n] + " = " + environmentSettings.getSetting(names[n]));
 					}
 				}
 				
@@ -991,9 +1150,9 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				else if (arguments.length == 1) {
 					String oldValue = environmentSettings.removeSetting(arguments[0]);
 					if (oldValue == null)
-						System.out.println("There is no environment variable named '" + arguments[0] + "'.");
+						this.reportError("There is no environment variable named '" + arguments[0] + "'.");
 					else {
-						System.out.println("Environment variable '" + arguments[0] + "' erased successfully.");
+						this.reportResult("Environment variable '" + arguments[0] + "' erased successfully.");
 						environmentSettingsModified = true;
 					}
 				}
@@ -1002,13 +1161,93 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				else if (arguments.length == 2) {
 					String oldValue = environmentSettings.setSetting(arguments[0], arguments[1]);
 					if (oldValue == null)
-						System.out.println("Environment variable '" + arguments[0] + "' created successfully.");
-					else System.out.println("Environment variable '" + arguments[0] + "' changed successfully.");
+						this.reportResult("Environment variable '" + arguments[0] + "' created successfully.");
+					else this.reportResult("Environment variable '" + arguments[0] + "' changed successfully.");
 					environmentSettingsModified = true;
 				}
 				
 				//	error
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify name and value at most.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify name and value at most.");
+			}
+		};
+		cal.add(ca);
+		
+		//	add action for setting log levels
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return SET_LOG_LEVEL_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						(SET_LOG_LEVEL_COMMAND + " <target> <level>"),
+						"List or set log levels:",
+						"- <target>: the target debug area ('c' for console, 'n' for network, and 'b' for background)",
+						"  (optional, omitting name and value lists debug levels)",
+						"- <level>: the debug level ('d' for debug, 'i' for info, 'w' for warning, 'e' for error, and 'o' for off)",
+						"  (optional, omitting value erases the variable)",
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				
+				//	list all three log levels
+				if (arguments.length == 0) {
+					this.reportResult("Log levels currently are:");
+					this.reportResult("- console: " + this.getLogLevelName(logLevelConsole));
+					this.reportResult("- network: " + this.getLogLevelName(logLevelNetwork));
+					this.reportResult("- background: " + this.getLogLevelName(logLevelBackground));
+				}
+				
+				//	set log level
+				else if (arguments.length == 2) {
+					int logLevel = this.getLogLevel(arguments[1]);
+					if (logLevel == -1) {
+						this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', log level has to be either one of 'd' (debug), 'i' (info), 'w' (warning), 'e' (error), or 'o' (off).");
+						return;
+					}
+					if ("c".equals(arguments[0])) {
+						logLevelConsole = logLevel;
+						this.reportResult(" Console log level set to " + this.getLogLevelName(logLevel));
+					}
+					else if ("n".equals(arguments[0])) {
+						logLevelNetwork = logLevel;
+						this.reportResult(" Network log level set to " + this.getLogLevelName(logLevel));
+					}
+					else if ("b".equals(arguments[0])) {
+						logLevelBackground = logLevel;
+						this.reportResult(" Background log level set to " + this.getLogLevelName(logLevel));
+					}
+					else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', log level can only be set for either one of 'c' (console), 'n' (network), or 'b' (background).");
+				}
+				
+				//	error
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify name and value at most.");
+			}
+			private int getLogLevel(String logLevel) {
+				if ("d".equals(logLevel))
+					return GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG;
+				else if ("i".equals(logLevel))
+					return GoldenGateServerActivityLogger.LOG_LEVEL_INFO;
+				else if ("w".equals(logLevel))
+					return GoldenGateServerActivityLogger.LOG_LEVEL_WARNING;
+				else if ("e".equals(logLevel))
+					return GoldenGateServerActivityLogger.LOG_LEVEL_ERROR;
+				else if ("o".equals(logLevel))
+					return GoldenGateServerActivityLogger.LOG_LEVEL_OFF;
+				else return -1;
+			}
+			private String getLogLevelName(int logLevel) {
+				if (logLevel == GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG)
+					return "debug";
+				else if (logLevel == GoldenGateServerActivityLogger.LOG_LEVEL_INFO)
+					return "info";
+				else if (logLevel == GoldenGateServerActivityLogger.LOG_LEVEL_WARNING)
+					return "warning";
+				else if (logLevel == GoldenGateServerActivityLogger.LOG_LEVEL_ERROR)
+					return "error";
+				else if (logLevel == GoldenGateServerActivityLogger.LOG_LEVEL_OFF)
+					return "off";
+				else return (logLevel + " (invalid)");
 			}
 		};
 		cal.add(ca);
@@ -1018,13 +1257,17 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 	
 	private static HashMap componentActionSetsByLetterCode = new HashMap();
 	
-	private static abstract class ComponentServerConsole extends Thread {
+	private static abstract class ComponentServerConsole extends LoggingThread {
 		
 		private static final String HELP_COMMAND = "?";
 		private static final String CHANGE_COMPONENT_COMMAND = "cc";
 		
 		String currentLetterCode = "";
 		PrintStream out;
+		
+		private long activityLogStart = -1;
+		private long activityLogEnd = -1;
+		private ArrayList activityLogMessages = null;
 		
 		ComponentServerConsole() {
 			super("GgServerConsoleThread");
@@ -1038,97 +1281,146 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			
 			//	parse command
 			String[] commandTokens = parseCommand(commandString);
-			if (commandTokens.length != 0) {
+			if (commandTokens.length == 0)
+				return;
+			
+			//	setting letter code
+			if (CHANGE_COMPONENT_COMMAND.equals(commandTokens[0]))
+				this.currentLetterCode = ((commandTokens.length == 1) ? "" : commandTokens[1]);
+			
+			//	help
+			else if (HELP_COMMAND.equals(commandTokens[0])) {
 				
-				//	setting letter code
-				if (CHANGE_COMPONENT_COMMAND.equals(commandTokens[0]))
-					this.currentLetterCode = ((commandTokens.length == 1) ? "" : commandTokens[1]);
-				
-				//	help
-				else if (HELP_COMMAND.equals(commandTokens[0])) {
+				//	global help
+				if (this.currentLetterCode.length() == 0) {
+					this.logResult(HELP_COMMAND);
+					this.logResult("  Display this list of commands.");
+					this.logResult(CHANGE_COMPONENT_COMMAND + " <letterCode>");
+					this.logResult("  Set the component letter code so subsequent commands automatically go to a specific server component:");
+					this.logResult("  - <letterCode>: the new component letter code");
 					
-					//	global help
-					if (this.currentLetterCode.length() == 0) {
-						ArrayList letterCodeList = new ArrayList(componentActionSetsByLetterCode.keySet());
-						Collections.sort(letterCodeList);
+					ArrayList letterCodeList = new ArrayList(componentActionSetsByLetterCode.keySet());
+					Collections.sort(letterCodeList);
+					for (int c = 0; c < letterCodeList.size(); c++) {
+						String letterCode = letterCodeList.get(c).toString();
 						
-						System.out.println(HELP_COMMAND);
-						System.out.println("  Display this list of commands.");
-						System.out.println(CHANGE_COMPONENT_COMMAND + " ");
-						System.out.println("  Set the component letter code so subsequent commands automatically go to a specific server component:");
-						System.out.println("  - : the new component letter code");
+						HashMap componentActionSet = ((HashMap) componentActionSetsByLetterCode.get(letterCode));
+						if (componentActionSet == null)
+							continue;
 						
-						for (int c = 0; c < letterCodeList.size(); c++) {
-							String letterCode = letterCodeList.get(c).toString();
+						ArrayList actionNameList = new ArrayList(componentActionSet.keySet());
+						if (actionNameList.isEmpty())
+							continue;
+						
+						Collections.sort(actionNameList);
+						this.logResult("");
+						this.logResult("Commands with prefix '" + letterCode + "':");
+						
+						for (int a = 0; a < actionNameList.size(); a++) {
+							ComponentActionConsole action = ((ComponentActionConsole) componentActionSet.get(actionNameList.get(a)));
 							
-							HashMap componentActionSet = ((HashMap) componentActionSetsByLetterCode.get(letterCode));
-							if (componentActionSet != null) {
-								
-								ArrayList actionNameList = new ArrayList(componentActionSet.keySet());
-								Collections.sort(actionNameList);
-								
-								if (actionNameList.size() != 0) {
-									System.out.println();
-									System.out.println("Commands with prefix '" + letterCode + "':");
-									
-									for (int a = 0; a < actionNameList.size(); a++) {
-										ComponentActionConsole action = ((ComponentActionConsole) componentActionSet.get(actionNameList.get(a)));
-										
-										String[] explanation = action.getExplanation();
-										for (int e = 0; e < explanation.length; e++)
-											System.out.println("  " + ((e == 0) ? "" : "  ") + explanation[e]);
-									}
-								}
-							}
-						}
-					}
-					
-					//	help for given letter code
-					else {
-						HashMap componentActionSet = ((HashMap) componentActionSetsByLetterCode.get(this.currentLetterCode));
-						if (componentActionSet != null) {
-							
-							ArrayList actionNameList = new ArrayList(componentActionSet.keySet());
-							Collections.sort(actionNameList);
-							
-							if (actionNameList.size() != 0) {
-								System.out.println();
-								System.out.println("Commands with prefix '" + this.currentLetterCode + "':");
-								
-								for (int a = 0; a < actionNameList.size(); a++) {
-									ComponentActionConsole action = ((ComponentActionConsole) componentActionSet.get(actionNameList.get(a)));
-									
-									String[] explanation = action.getExplanation();
-									for (int e = 0; e < explanation.length; e++)
-										System.out.println("  " + ((e == 0) ? "" : "  ") + explanation[e]);
-								}
-							}
+							String[] explanation = action.getExplanation();
+							for (int e = 0; e < explanation.length; e++)
+								this.logResult("  " + ((e == 0) ? "" : "  ") + explanation[e]);
 						}
 					}
 				}
 				
-				//	other command
+				//	help for given letter code
 				else {
+					HashMap componentActionSet = ((HashMap) componentActionSetsByLetterCode.get(this.currentLetterCode));
+					if (componentActionSet == null)
+						return;
 					
-					//	identify action
-					GoldenGateServerComponent.ComponentActionConsole action = getActionForCommand(commandTokens[0]);
+					ArrayList actionNameList = new ArrayList(componentActionSet.keySet());
+					if (actionNameList.isEmpty())
+						return;
 					
-					//	action not found
-					if (action == null)
-						System.out.println(" Unknown command '" + commandTokens[0] + "', use '" + HELP_COMMAND + "' to list available commands");
+					Collections.sort(actionNameList);
+					this.logResult("");
+					this.logResult("Commands with prefix '" + this.currentLetterCode + "':");
 					
-					//	invoke action
-					else {
+					for (int a = 0; a < actionNameList.size(); a++) {
+						ComponentActionConsole action = ((ComponentActionConsole) componentActionSet.get(actionNameList.get(a)));
 						
-						//	prepare action arguments
-						String[] actionArguments = new String[commandTokens.length - 1];
-						System.arraycopy(commandTokens, 1, actionArguments, 0, actionArguments.length);
-						
-						//	do it!
-						action.performActionConsole(actionArguments);
+						String[] explanation = action.getExplanation();
+						for (int e = 0; e < explanation.length; e++)
+							this.logResult("  " + ((e == 0) ? "" : "  ") + explanation[e]);
 					}
 				}
 			}
+			
+			//	other command
+			else {
+				
+				//	identify action
+				ComponentActionConsole action = getActionForCommand(commandTokens[0]);
+				
+				//	action not found
+				if (action == null)
+					this.logResult(" Unknown command '" + commandTokens[0] + "', use '" + HELP_COMMAND + "' to list available commands");
+				
+				//	invoke action
+				else try {
+					
+					//	prepare action arguments
+					String[] actionArguments = new String[commandTokens.length - 1];
+					System.arraycopy(commandTokens, 1, actionArguments, 0, actionArguments.length);
+					
+					//	set up activity logging
+					this.activityLogStart = System.currentTimeMillis();
+					this.activityLogEnd = (this.activityLogStart + (5 * 1000));
+					this.activityLogMessages = new ArrayList();
+					
+					//	perform action
+					action.performActionConsole(actionArguments, this);
+				}
+				finally {
+					this.activityLogStart = -1;
+					this.activityLogEnd = -1;
+					this.activityLogMessages = null;
+				}
+			}
+		}
+		
+		public void logError(Throwable error) {
+			GoldenGateServer.log(error, LOG_LEVEL_ERROR, logLevelConsole);
+		}
+		public void logActivity(String message) {
+			
+			//	log level debug, output message right away
+			if (LOG_LEVEL_DEBUG <= logLevelConsole) {
+				this.logDebug(message);
+				return;
+			}
+			
+			//	create time prefix
+			long time = System.currentTimeMillis();
+			int runTime = ((int) ((time - this.activityLogStart) & 0x7FFFFFFF));
+			
+			//	before debug log timeout, store message if we can
+			if (time < this.activityLogEnd) {
+				if (this.activityLogMessages == null)
+					this.logDebug(runTime + "ms: " + message);
+				else this.activityLogMessages.add(runTime + "ms: " + message);
+				return;
+			}
+			
+			//	write through collected messages as warnings after timeout expired (if not done before)
+			if (this.activityLogMessages != null) {
+				for (int m = 0; m < this.activityLogMessages.size(); m++)
+					this.logWarning(((String) this.activityLogMessages.get(m)));
+				this.activityLogMessages = null;
+			}
+			
+			//	this message now has warning level
+			this.logWarning(runTime + "ms: " + message);
+		}
+		public void logResult(String message) {
+			this.logAlways(message); // always print the result of a console interaction
+		}
+		void log(String message, int messageLogLevel) {
+			GoldenGateServer.log(message, messageLogLevel, logLevelConsole);
 		}
 		
 		private static final char ESCAPER = '\\';
@@ -1200,8 +1492,8 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 			}
 			
 			HashMap componentActionSet = ((HashMap) componentActionSetsByLetterCode.get(letterCode));
-			if (componentActionSet == null) return null;
-			
+			if (componentActionSet == null)
+				return null;
 			return ((ComponentActionConsole) componentActionSet.get(actionName));
 		}
 	}
@@ -1241,8 +1533,8 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		
 		private int port;
 		private String password;
-		private ServerSocket ss;
-		private Socket s;
+		private ServerSocket serverSocket;
+		private Socket activeSocket;
 		private int timeout;
 		
 		SocketConsole(int port, String password, int timeout) {
@@ -1252,19 +1544,19 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 		}
 		
 		void close() {
-			if (this.ss != null) try {
-				ServerSocket ss = this.ss;
-				this.ss = null;
+			if (this.serverSocket != null) try {
+				ServerSocket ss = this.serverSocket;
+				this.serverSocket = null;
 				ss.close();
 			} catch (IOException ioe) {}
 			
-			if (this.s != null) try {
+			if (this.activeSocket != null) try {
 				synchronized (consoleOutLock) {
 					this.out = null;
 				}
-				Socket s = this.s;
-				this.s = null;
-				s.close();
+				Socket as = this.activeSocket;
+				this.activeSocket = null;
+				as.close();
 			} catch (IOException ioe) {}
 		}
 		
@@ -1273,101 +1565,105 @@ public class GoldenGateServer implements GoldenGateServerConstants {
 				ServerSocket ss = new ServerSocket();
 				ss.setReuseAddress(true);
 				ss.bind(new InetSocketAddress(this.port));
-				this.ss = ss;
-				
-				while (this.ss != null) try {
-					BufferedReader commandReader;
-					PrintStream sOut;
-					
-					//	wait for incoming connections
-					Socket s = this.ss.accept();
-					System.out.println("Network console connection from " + s.getInetAddress().getHostAddress() + ", local is " + InetAddress.getLocalHost().getHostAddress());
-					if (s.getInetAddress().getHostAddress().equals("127.0.0.1") || s.getInetAddress().getHostAddress().equals(InetAddress.getLocalHost().getHostAddress())) {
-						System.out.println("Network console connected.");
-						sOut = new PrintStream(s.getOutputStream(), true);
-						
-						commandReader = new BufferedReader(new InputStreamReader(s.getInputStream()));
-						s.setSoTimeout(500); // wait half a second for password, no longer
-						String password = commandReader.readLine();
-						if (this.password.equals(password)) {
-							sOut.println("WELCOME");
-						}
-						else {
-							System.out.println("Network console authentication failed.");
-							sOut.println("Authentication failed.");
-							s.close();
-							throw new IOException("Network console authentication failed");
-						}
-					}
-					else {
-						s.close();
-						throw new IOException("Remote network console connection not allowed");
-					}
-					
-					this.s = s;
-					this.s.setSoTimeout(this.timeout);
-					synchronized (consoleOutLock) {
-						this.out = sOut;
-					}
-					
-					while (this.s != null) try {
-						
-						String commandString;
-						try {
-							commandString = commandReader.readLine();
-						}
-						catch (Exception e) {
-							commandString = null;
-						}
-						
-						//	client logout
-						if ("GOODBYE".equals(commandString)) {
-							synchronized (consoleOutLock) {
-								this.out.println("GOODBYE");
-								this.out = null;
-							}
-							this.s.close();
-							this.s = null;
-						}
-						
-						//	server shutdown
-						else if (this.s == null) {
-							//	ignore it here, it's done in close()
-						}
-						
-						//	client connection lost
-						else if (commandString == null) {
-							synchronized (consoleOutLock) {
-								this.out = null;
-							}
-							this.s.close();
-							this.s = null;
-						}
-						
-						//	regular command
-						else {
-							commandString = commandString.trim();
-							try {
-								this.executeCommand(commandString);
-							}
-							catch (Throwable t) {
-								System.out.println("Error executing network console command: " + t.getMessage());
-							}
-							synchronized (consoleOutLock) {
-								this.out.println("COMMAND_DONE");
-							}
-						}
-					}
-					catch (Exception e) {
-						System.out.println("Error reading or executing network console command: " + e.getMessage());
-					}
-				}
-				catch (Exception e) {
-					System.out.println("Error accepting network console connection: " + e.getMessage());
-				}
+				this.serverSocket = ss;
 			}
 			catch (Exception e) {
 				System.out.println("Error opening network console: " + e.getMessage());
+				return;
+			}
+				
+			while (this.serverSocket != null) try {
+				BufferedReader commandReader;
+				PrintStream sOut;
+				
+				//	wait for incoming connections
+				Socket as = this.serverSocket.accept();
+				System.out.println("Network console connection from " + as.getInetAddress().getHostAddress() + ", local is " + InetAddress.getLocalHost().getHostAddress());
+				if (as.getInetAddress().getHostAddress().equals("127.0.0.1") || as.getInetAddress().getHostAddress().equals(InetAddress.getLocalHost().getHostAddress())) {
+					System.out.println("Network console connected.");
+					sOut = new PrintStream(as.getOutputStream(), true);
+					
+					commandReader = new BufferedReader(new InputStreamReader(as.getInputStream()));
+					as.setSoTimeout(500); // wait half a second for password, no longer
+					String password = commandReader.readLine();
+					if (this.password.equals(password)) {
+						sOut.println("WELCOME");
+					}
+					else {
+						System.out.println("Network console authentication failed.");
+						sOut.println("Authentication failed.");
+						as.close();
+						throw new IOException("Network console authentication failed");
+					}
+				}
+				else {
+					as.close();
+					throw new IOException("Remote network console connection not allowed");
+				}
+				
+				this.activeSocket = as;
+				this.activeSocket.setSoTimeout(this.timeout);
+				synchronized (consoleOutLock) {
+					this.out = sOut;
+				}
+				
+				while (this.activeSocket != null) try {
+					
+					String commandString;
+					try {
+						commandString = commandReader.readLine();
+					}
+					catch (Exception e) {
+						commandString = null;
+					}
+					
+					//	client logout
+					if ("GOODBYE".equals(commandString)) {
+						synchronized (consoleOutLock) {
+							this.out.println("GOODBYE");
+							this.out = null;
+						}
+						this.activeSocket.close();
+						this.activeSocket = null;
+					}
+					
+					//	server shutdown
+					else if (this.activeSocket == null) {
+						//	ignore it here, it's done in close()
+					}
+					
+					//	client connection lost
+					else if (commandString == null) {
+						synchronized (consoleOutLock) {
+							this.out = null;
+						}
+						this.activeSocket.close();
+						this.activeSocket = null;
+					}
+					
+					//	regular command
+					else {
+						commandString = commandString.trim();
+						try {
+							this.executeCommand(commandString);
+						}
+						catch (Throwable t) {
+							System.out.println("Error executing network console command: " + t.getMessage());
+							t.printStackTrace(System.out);
+						}
+						synchronized (consoleOutLock) {
+							this.out.println("COMMAND_DONE");
+						}
+					}
+				}
+				catch (Exception e) {
+					System.out.println("Error reading network console command: " + e.getMessage());
+					e.printStackTrace(System.out);
+				}
+			}
+			catch (Exception e) {
+				System.out.println("Error accepting network console connection: " + e.getMessage());
+				e.printStackTrace(System.out);
 			}
 		}
 	}

@@ -49,7 +49,6 @@ import de.uka.ipd.idaho.stringUtils.csvHandler.StringTupel;
  * @author sautter
  */
 public class UserManagerModul extends AuthenticatedWebClientModul implements UserAccessAuthorityConstants {
-	
 	private static final String EDIT_USER = "UAA_EDIT_USER";
 	private static final String WAS_ADMIN_PARAMETER = "wasAdmin";
 	

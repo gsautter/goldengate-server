@@ -97,21 +97,21 @@ public class GoldenGateServerEventService implements GoldenGateServerConstants {
 		for (Iterator it = listeners.iterator(); it.hasNext();) {
 			GoldenGateServerEventListener gsel = ((GoldenGateServerEventListener) it.next());
 			if (DEBUG_NOTIFY) System.out.println("  - listener is " + gsel.getClass().getName());
-			if (notifyingListeners.add(gsel.getClass().getName())) {
-				try {
-					if (DEBUG_NOTIFY) System.out.println("    - not yet in notification loop, notifying");
-					gsel.notify(gse);
-				}
-				catch (Throwable t) {
-					System.out.println("GoldenGateServerEventQueue: an exception occurred during event dispatching");
+			if (notifyingListeners.add(gsel.getClass().getName())) try {
+				if (DEBUG_NOTIFY) System.out.println("    - not yet in notification loop, notifying");
+				gsel.notify(gse);
+			}
+			catch (Throwable t) {
+				System.out.println("GoldenGateServerEventQueue: an exception occurred during event dispatching");
+				System.out.println(t.getClass().getName() + ": " + t.getMessage());
+				t.printStackTrace(System.out);
+				while ((t = t.getCause()) != null) {
+					System.out.println("caused by");
 					System.out.println(t.getClass().getName() + ": " + t.getMessage());
 					t.printStackTrace(System.out);
-					while ((t = t.getCause()) != null) {
-						System.out.println("caused by");
-						System.out.println(t.getClass().getName() + ": " + t.getMessage());
-						t.printStackTrace(System.out);
-					}
 				}
+			}
+			finally {
 				notifyingListeners.remove(gsel.getClass().getName());
 			}
 		}

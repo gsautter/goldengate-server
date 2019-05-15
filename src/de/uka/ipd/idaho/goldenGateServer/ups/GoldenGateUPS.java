@@ -650,7 +650,7 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		abstract String performAction(String userOrRoleName, String[] rolesOrPermissions);
 	}
 	
-	private abstract class ModifyRolesOrPermissionsActionConsole implements ComponentActionConsole {
+	private abstract class ModifyRolesOrPermissionsActionConsole extends ComponentActionConsole {
 		private String actionCommand;
 		private String subject;
 		private String object;
@@ -687,7 +687,7 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		abstract String performAction(String userOrRoleName, String roleOrPermission);
 	}
 	
-	private abstract class ListRolesOrPermissionsActionConsole implements ComponentActionConsole {
+	private abstract class ListRolesOrPermissionsActionConsole extends ComponentActionConsole {
 		private String actionCommand;
 		private String subject;
 		private String object;

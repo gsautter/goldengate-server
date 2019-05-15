@@ -121,23 +121,6 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		public abstract String getActionCommand();
 	}
 	
-//	/**
-//	 * An action to perform on the server component. Implementations of this
-//	 * interface expose specific functions to network access, getting their
-//	 * input from a BufferedReader and sending their output to a BufferedWriter.
-//	 * 
-//	 * @author sautter
-//	 */
-//	public interface ComponentActionNetwork extends ComponentAction {
-//		
-//		/** perform the actual action with invocation over the network
-//		 * @param	input	the Reader to retrieve input from
-//		 * @param	output	the Writer to write output to
-//		 * @throws IOException
-//		 */
-//		public abstract void performActionNetwork(BufferedReader input, BufferedWriter output) throws IOException;
-//	}
-//	
 	/**
 	 * An action to perform on the server component. Implementations of this
 	 * interface expose specific functions to network access, getting their
@@ -146,6 +129,19 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 	 * @author sautter
 	 */
 	public abstract class ComponentActionNetwork implements ComponentAction {
+		
+		/**
+		 * Retrieve the amount of time (in milliseconds) after the start of
+		 * processing a call to this action when to turn activity log messages
+		 * from debug messages to warning messages. This default implementation
+		 * returns -1, indicating never. Sub classes may overwrite this method
+		 * as needed.
+		 * @return the processing time after which to treat activity log messages
+		 *        as warning messages rather than debug ones.
+		 */
+		public long getActivityLogTimeout() {
+			return -1;
+		}
 		
 		/**
 		 * Perform the actual action with invocation over the network. This
@@ -181,7 +177,56 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 	 * 
 	 * @author sautter
 	 */
-	public interface ComponentActionConsole extends ComponentAction {
+	public abstract class ComponentActionConsole implements ComponentAction {
+		private GoldenGateServerActivityLogger resultLogger = null;
+		
+		/** perform the actual action with invocation from the console (command line)
+		 * @param	arguments	an array holding the arguments for the action
+		 * @param	resultLogger	a logger to report the outcome of the action to
+		 */
+		public void performActionConsole(String[] arguments, GoldenGateServerActivityLogger resultLogger) {
+			try {
+				this.resultLogger = resultLogger;
+				this.performActionConsole(arguments);
+			}
+			finally {
+				//no need to reset this, each instance of this class only ever exists in single server with single console
+				//better retain logger, as implementations might well start their own threads
+				//this.resultLogger = null;
+			}
+		}
+		
+		/**
+		 * Report the result of executing the action back to the console.
+		 * 
+		 * @param message the message to output on the console
+		 */
+		public void reportResult(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logResult(message);
+		}
+		
+		/**
+		 * Report an error that happened while executing the action back to the
+		 * console.
+		 * 
+		 * @param message the error message to output on the console
+		 */
+		public void reportError(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logResult(message);
+		}
+		
+		/**
+		 * Report an error that happened while executing the action back to the
+		 * console.
+		 * 
+		 * @param error the error to report to the console
+		 */
+		public void reportError(Throwable error) {
+			if (this.resultLogger != null)
+				this.resultLogger.logError(error);
+		}
 		
 		/** perform the actual action with invocation from the console (command line)
 		 * @param	arguments	an array holding the arguments for the action
@@ -194,24 +239,6 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		 */
 		public abstract String[] getExplanation();
 	}
-//	
-//	/**
-//	 * An action to perform on the server component. This interface exists to
-//	 * offer a convenient way of implementing both network and console access in
-//	 * a single anonymous class.
-//	 * 
-//	 * @author sautter
-//	 */
-//	public interface ComponentActionFull extends ComponentActionNetwork, ComponentActionConsole {}
-	
-	/**
-	 * An action to perform on the server component. This interface exists to
-	 * offer a convenient way of implementing both network and console access in
-	 * a single anonymous class.
-	 * 
-	 * @author sautter
-	 */
-	public abstract class ComponentActionFull extends ComponentActionNetwork implements ComponentActionConsole {}
 	
 	/**
 	 * @return an array holding all the actions that can be performed on this

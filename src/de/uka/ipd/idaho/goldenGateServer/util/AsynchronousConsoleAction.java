@@ -53,7 +53,9 @@ import de.uka.ipd.idaho.stringUtils.StringVector;
  * 
  * @author sautter
  */
-public abstract class AsynchronousConsoleAction implements ComponentActionConsole {
+public abstract class AsynchronousConsoleAction extends ComponentActionConsole {
+	
+	//	TODO implement logging methods, and loop through to parent component
 	
 	private final String command;
 	
@@ -185,64 +187,64 @@ public abstract class AsynchronousConsoleAction implements ComponentActionConsol
 			arguments[0] = "-c";
 		}
 		else if (!"-s".equals(arguments[0]) && (arguments.length != 1)) {
-			System.out.println(" Additional arguments can only be specified for action '-s'.");
+			this.reportError(" Additional arguments can only be specified for action '-s'.");
 			return;
 		}
 		
 		if ("-s".equals(arguments[0])) {
-			if (actionThread == null) {
+			if (this.actionThread == null) {
 				String[] threadArguments = new String[arguments.length-1];
 				System.arraycopy(arguments, 1, threadArguments, 0, threadArguments.length);
 				String argumentError = this.checkArguments(threadArguments);
 				if (argumentError != null)
-					System.out.println(" Invalid arguments for '" + this.getActionCommand() + " -s'. " + argumentError);
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + " -s'. " + argumentError);
 				else try {
 					checkRunnable();
-					actionThread = new AsynchronousActionThread(threadArguments);
-					actionThread.setUpdateMonitor(System.out);
-					actionThread.startUpdate();
+					this.actionThread = new AsynchronousActionThread(threadArguments);
+					this.actionThread.setUpdateMonitor(System.out); // TODO use reportXYZ()
+					this.actionThread.startUpdate();
 				}
 				catch (RuntimeException re) {
-					System.out.println(re.getMessage());
+					this.reportError(re.getMessage());
 				}
 			}
-			else System.out.println("There is already " + this.labelDeterminer + " " + this.label + " update running.");
+			else this.reportError("There is already " + this.labelDeterminer + " " + this.label + " update running.");
 		}
 		else if ("-m".equals(arguments[0])) {
-			if (actionThread == null)
-				System.out.println("There is no " + this.label + " " + this.command + " running.");
-			else actionThread.setUpdateMonitor(System.out);
+			if (this.actionThread == null)
+				this.reportError("There is no " + this.label + " " + this.command + " running.");
+			else this.actionThread.setUpdateMonitor(System.out); // TODO use reportXYZ()
 		}
 		else if ("-q".equals(arguments[0])) {
-			if (actionThread == null)
-				System.out.println("There is no " + this.label + " " + this.command + " running.");
-			else actionThread.setUpdateMonitor(null);
+			if (this.actionThread == null)
+				this.reportError("There is no " + this.label + " " + this.command + " running.");
+			else this.actionThread.setUpdateMonitor(null);
 		}
 		else if ("-p".equals(arguments[0])) {
-			if (actionThread == null)
-				System.out.println("There is no " + this.label + " " + this.command + " running.");
-			else if (actionThread.pause)
-				System.out.println("The running " + this.label + " " + this.command + " is already paused.");
-			else actionThread.pauseUpdate();
+			if (this.actionThread == null)
+				this.reportError("There is no " + this.label + " " + this.command + " running.");
+			else if (this.actionThread.pause)
+				this.reportError("The running " + this.label + " " + this.command + " is already paused.");
+			else this.actionThread.pauseUpdate();
 		}
 		else if ("-r".equals(arguments[0])) {
-			if (actionThread == null)
-				System.out.println("There is no " + this.label + " " + this.command + " running.");
-			else if (actionThread.pause)
-				actionThread.resumeUpdate();
-			else System.out.println("The running " + this.label + " " + this.command + " is not paused.");
+			if (this.actionThread == null)
+				this.reportError("There is no " + this.label + " " + this.command + " running.");
+			else if (this.actionThread.pause)
+				this.actionThread.resumeUpdate();
+			else this.reportError("The running " + this.label + " " + this.command + " is not paused.");
 		}
 		else if ("-a".equals(arguments[0])) {
-			if (actionThread == null)
-				System.out.println("There is no " + this.label + " " + this.command + " running.");
-			else actionThread.abortUpdate();
+			if (this.actionThread == null)
+				this.reportError("There is no " + this.label + " " + this.command + " running.");
+			else this.actionThread.abortUpdate();
 		}
 		else if ("-c".equals(arguments[0])) {
-			if (actionThread == null)
-				System.out.println("There is no " + this.label + " " + this.command + " running.");
-			else System.out.println("Current update: " + actionThread.status);
+			if (this.actionThread == null)
+				this.reportError("There is no " + this.label + " " + this.command + " running.");
+			else this.reportResult("Current update: " + actionThread.status);
 		}
-		else System.out.println(" Invalid action for '" + this.getActionCommand() + "', use one of '-s', '-m', '-q', '-p', '-r', '-a', or '-c'.");
+		else this.reportError(" Invalid action for '" + this.getActionCommand() + "', use one of '-s', '-m', '-q', '-p', '-r', '-a', or '-c'.");
 	}
 	
 	/**
@@ -307,7 +309,7 @@ public abstract class AsynchronousConsoleAction implements ComponentActionConsol
 	 * method returns false after an action was aborted from the console via the
 	 * 'update -a' command. Implementations of the performAction() method that
 	 * contain a loop over a large number of data items should include an
-	 * invokation of this method in their loop condition.
+	 * invocation of this method in their loop condition.
 	 */
 	protected final boolean continueAction() {
 		return ((this.actionThread != null) && this.actionThread.action);

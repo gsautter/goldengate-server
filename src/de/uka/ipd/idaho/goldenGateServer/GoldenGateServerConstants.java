@@ -56,7 +56,7 @@ public interface GoldenGateServerConstants {
 		
 		/**
 		 * Generic listener for GoldenGATE Server Events. All listeners for more
-		 * specirfic events should extend this class and implement the notify() method
+		 * specific events should extend this class and implement the notify() method
 		 * to dispatch events to their more specific methods.
 		 * 
 		 * @author sautter
@@ -89,13 +89,14 @@ public interface GoldenGateServerConstants {
 		
 		private EventLogger log = null;
 		
-		/**
-		 * The class name of the component that issued the event
-		 */
+		/** The class name of the component that issued the event */
 		public final String sourceClassName;
 		
 		/** the event type, used for dispatching */
 		public final int type;
+		
+		/** Is this event a high-priority one? */
+		public final boolean isHighPriority;
 		
 		/** the time when the event happened */
 		public final long eventTime;
@@ -121,6 +122,18 @@ public interface GoldenGateServerConstants {
 		/**
 		 * Constructor
 		 * @param type the event type, used for dispatching
+		 * @param highPriority is this a high-priority event?
+		 * @param sourceClassName the class name of the component issuing the event
+		 * @param logger an EventLogger to collect log messages while the event is
+		 *            being processed in listeners
+		 */
+		public GoldenGateServerEvent(int type, boolean highPriority, String sourceClassName, EventLogger logger) {
+			this(type, sourceClassName, -1, null, logger);
+		}
+		
+		/**
+		 * Constructor
+		 * @param type the event type, used for dispatching
 		 * @param sourceClassName the class name of the component issuing the
 		 *            event
 		 * @param eventTime the time when the event happened
@@ -132,7 +145,26 @@ public interface GoldenGateServerConstants {
 		 *            is being processed in listeners
 		 */
 		public GoldenGateServerEvent(int type, String sourceClassName, long eventTime, String eventId, EventLogger logger) {
+			this(type, false, sourceClassName, eventTime, eventId, logger);
+		}
+		
+		/**
+		 * Constructor
+		 * @param type the event type, used for dispatching
+		 * @param highPriority is this a high-priority event?
+		 * @param sourceClassName the class name of the component issuing the
+		 *            event
+		 * @param eventTime the time when the event happened
+		 * @param eventId the ID of the event (defaults to a concatenation of
+		 *            source class name and event time; must consist of letters,
+		 *            digits, dashes and underscores only, no whitespace in
+		 *            particular)
+		 * @param logger an EventLogger to collect log messages while the event
+		 *            is being processed in listeners
+		 */
+		public GoldenGateServerEvent(int type, boolean highPriority, String sourceClassName, long eventTime, String eventId, EventLogger logger) {
 			this.type = type;
+			this.isHighPriority = highPriority;
 			this.sourceClassName = sourceClassName;
 			this.eventTime = ((eventTime < 1) ? System.currentTimeMillis() : eventTime);
 			this.eventId = ((eventId == null) ? (sourceClassName + "-" + this.eventTime) : eventId);
