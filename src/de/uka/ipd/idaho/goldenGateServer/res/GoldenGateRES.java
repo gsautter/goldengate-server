@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -41,8 +41,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
-import java.util.TreeMap;
 import java.util.Map.Entry;
+import java.util.TreeMap;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
@@ -50,8 +50,10 @@ import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
-import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerEventService;
+import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
+import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants.GoldenGateServerEvent.GoldenGateServerEventListener;
+import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerEventService;
 import de.uka.ipd.idaho.goldenGateServer.client.ServerConnection;
 import de.uka.ipd.idaho.goldenGateServer.client.ServerConnection.Connection;
 
@@ -332,6 +334,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	private String domainName;
 	
 	private DataUpdateThread dataUpdateService = null;
+	private AsynchronousWorkQueue dataUpdateMonitor = null;
 	
 	private static final String EVENT_TABLE_NAME = "GgResData";
 	
@@ -389,6 +392,11 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			try {
 				this.dataUpdateQueue.wait();
 			} catch (InterruptedException ie) {}
+			this.dataUpdateMonitor = new AsynchronousWorkQueue("ResDataUpdater") {
+				public String getStatus() {
+					return (this.name + ": " + dataUpdateQueue.size() + " data updates pending");
+				}
+			};
 		}
 		System.out.println("  - local data update service started");
 		
@@ -399,6 +407,11 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			try {
 				this.eventIssuingQueue.wait();
 			} catch (InterruptedException ie) {}
+			this.eventIssuerMonitor = new AsynchronousWorkQueue("ResEventIssuer") {
+				public String getStatus() {
+					return (this.name + ": " + eventIssuingQueue.size() + " events to issue");
+				}
+			};
 		}
 		System.out.println("  - event issuer service started");
 		
@@ -464,12 +477,14 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	protected void exitComponent() {
 		System.out.println("GoldenGateRES: shutting down ...");
 		
+		this.dataUpdateMonitor.dispose();
 		this.dataUpdateService.shutdown();
 		System.out.println("  - data update service shut down");
 		
 		this.eventFetcherService.shutdown();
 		System.out.println("  - event fetcher service shut down");
 		
+		this.eventIssuerMonitor.dispose();
 		this.eventIssuerService.shutdown();
 		System.out.println("  - event issuer service shut down");
 		
@@ -510,10 +525,10 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					output.flush();
 				}
 				catch (IOException ioe) {
-					System.out.println("GoldenGateRES: " + ioe.getClass().getName() + " (" + ioe.getMessage() + ") while listing documents.");
+					logError("GoldenGateRES: " + ioe.getClass().getName() + " (" + ioe.getMessage() + ") while listing events.");
 					
 					//	report error
-					output.write("GoldenGateRES: " + ioe.getClass().getName() + " (" + ioe.getMessage() + ") while listing documents.");
+					output.write("GoldenGateRES: " + ioe.getClass().getName() + " (" + ioe.getMessage() + ") while listing events.");
 					output.newLine();
 				}
 			}
@@ -576,7 +591,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 						port = Integer.parseInt(arguments[1]);
 					}
 					catch (NumberFormatException nfe) {
-						System.out.println(" Invalid port number '" + arguments[1] + "'.");
+						this.reportError(" Invalid port number '" + arguments[1] + "'.");
 						return;
 					}
 					String domainName;
@@ -584,8 +599,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 						domainName = getDomainName(address, port);
 					}
 					catch (IOException ioe) {
-						System.out.println(" Could not connect to RES at " + arguments[0] + ((port == -1) ? "" : (":" + port)) + ":");
-						System.out.println(" " + ioe.getMessage());
+						this.reportError(" Could not connect to RES at " + arguments[0] + ((port == -1) ? "" : (":" + port)) + ":");
+						this.reportError(" " + ioe.getMessage());
 						return;
 					}
 					
@@ -593,15 +608,15 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					try {
 						storeRes(res);
 						remoteResFederators.put(res.domainName, res);
-						System.out.println(" Successfully connected to remote RES " + domainName + ".");
+						this.reportResult(" Successfully connected to remote RES " + domainName + ".");
 					}
 					catch (IOException ioe) {
-						System.out.println(" Could not connect to remote RES '" + res.domainName + "':");
-						System.out.println(" " + ioe.getMessage());
-						ioe.printStackTrace(System.out);
+						this.reportError(" Could not connect to remote RES '" + res.domainName + "':");
+						this.reportError(" " + ioe.getMessage());
+						this.reportError(ioe);
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify address and optionally a port only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify address and optionally a port only.");
 			}
 		};
 		cal.add(ca);
@@ -623,7 +638,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				if (arguments.length == 1) {
 					RemoteRES res = ((RemoteRES) remoteResFederators.get(arguments[0]));
 					if (res == null)
-						System.out.println(" No remote RES found for name " + arguments[0]);
+						this.reportError(" No remote RES found for name " + arguments[0]);
 					else {
 						try {
 							RemoteRES[] ress = res.getConnections();
@@ -635,13 +650,13 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 							}
 						}
 						catch (IOException ioe) {
-							System.out.println(" Error on importing connections from remote RES:");
-							System.out.println(" " + ioe.getMessage());
-							ioe.printStackTrace(System.out);
+							this.reportError(" Error on importing connections from remote RES:");
+							this.reportError(" " + ioe.getMessage());
+							this.reportError(ioe);
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the domain name of the RES to import connections from as the only argument.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the domain name of the RES to import connections from as the only argument.");
 			}
 		};
 		cal.add(ca);
@@ -665,7 +680,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					String alias = arguments[0];
 					RemoteRES res = ((RemoteRES) remoteResFederators.get(alias));
 					if (res == null)
-						System.out.println(" No remote RES found for alias " + alias + ".");
+						this.reportError(" No remote RES found for alias " + alias + ".");
 					else {
 						int updateInterval = -1;
 						try {
@@ -673,21 +688,21 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 						}
 						catch (NumberFormatException nfe) {}
 						if (updateInterval < 600)
-							System.out.println(" The update interval has to be at least 600 seconds, for 10 minutes.");
+							this.reportError(" The update interval has to be at least 600 seconds, for 10 minutes.");
 						else {
 							res.updateInterval = updateInterval;
 							try {
 								storeRes(res);
-								System.out.println(" Update interval for remote RES " + alias + " changed successfully.");
+								this.reportResult(" Update interval for remote RES " + alias + " changed successfully.");
 							}
-							catch (IOException e) {
-								System.out.println(" Could not change update interval for remote RES '" + res.domainName + "': " + e.getClass().getName() + " (" + e.getMessage() + ")");
-								e.printStackTrace(System.out);
+							catch (IOException ioe) {
+								this.reportError(" Could not change update interval for remote RES '" + res.domainName + "': " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
+								this.reportError(ioe);
 							}
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify alias and update interval only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify alias and update interval only.");
 			}
 		};
 		cal.add(ca);
@@ -706,15 +721,15 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0) {
-					System.out.println(" There " + ((remoteResFederators.size() == 1) ? "is" : "are") + " " + ((remoteResFederators.size() == 0) ? "no" : ("" + remoteResFederators.size())) + " remote RES" + ((remoteResFederators.size() == 1) ? "" : "'s") + " connected" + ((remoteResFederators.size() == 0) ? "." : ":"));
+					this.reportResult(" There " + ((remoteResFederators.size() == 1) ? "is" : "are") + " " + ((remoteResFederators.size() == 0) ? "no" : ("" + remoteResFederators.size())) + " remote RES" + ((remoteResFederators.size() == 1) ? "" : "'s") + " connected" + ((remoteResFederators.size() == 0) ? "." : ":"));
 					synchronized (remoteResFederators) {
 						for (Iterator rit = remoteResFederators.values().iterator(); rit.hasNext();) {
 							RemoteRES res = ((RemoteRES) rit.next());
-							System.out.println(" - " + res.domainName + " (" + (res.active ? "active" : "inactive") + ") @ " + res.address + ((res.port == -1) ? "" : (":" + res.port)));
+							this.reportResult(" - " + res.domainName + " (" + (res.active ? "active" : "inactive") + ") @ " + res.address + ((res.port == -1) ? "" : (":" + res.port)));
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
 		cal.add(ca);
@@ -736,20 +751,20 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				if (arguments.length == 1) {
 					RemoteRES res = ((RemoteRES) remoteResFederators.get(arguments[0]));
 					if (res == null)
-						System.out.println(" No remote RES found for name " + arguments[0]);
+						this.reportError(" No remote RES found for name " + arguments[0]);
 					else {
 						res.active = true;
 						try {
 							storeRes(res);
 						}
 						catch (IOException ioe) {
-							System.out.println(" Error on activating remote RES:");
-							System.out.println(" " + ioe.getMessage());
-							ioe.printStackTrace(System.out);
+							this.reportError(" Error on activating remote RES:");
+							this.reportError(" " + ioe.getMessage());
+							this.reportError(ioe);
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the domain name of the RES to activate as the only argument.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the domain name of the RES to activate as the only argument.");
 			}
 		};
 		cal.add(ca);
@@ -771,20 +786,20 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				if (arguments.length == 1) {
 					RemoteRES res = ((RemoteRES) remoteResFederators.get(arguments[0]));
 					if (res == null)
-						System.out.println(" No remote RES found for name " + arguments[0]);
+						this.reportError(" No remote RES found for name " + arguments[0]);
 					else {
 						res.active = false;
 						try {
 							storeRes(res);
 						}
 						catch (IOException ioe) {
-							System.out.println(" Error on deactivating remote RES:");
-							System.out.println(" " + ioe.getMessage());
-							ioe.printStackTrace(System.out);
+							this.reportError(" Error on deactivating remote RES:");
+							this.reportError(" " + ioe.getMessage());
+							this.reportError(ioe);
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the domain name of the RES to activate as the only argument.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the domain name of the RES to activate as the only argument.");
 			}
 		};
 		cal.add(ca);
@@ -806,18 +821,18 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				if (arguments.length == 1) {
 					RemoteRES res = ((RemoteRES) remoteResFederators.get(arguments[0]));
 					if (res == null)
-						System.out.println(" No remote RES found for name " + arguments[0]);
+						this.reportError(" No remote RES found for name " + arguments[0]);
 					else {
 						try {
-							fetchRemoteEvents(res);
+							fetchRemoteEvents(res, this);
 						}
 						catch (IOException ioe) {
-							System.out.println(" Error on getting remote events - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
-							ioe.printStackTrace(System.out);
+							this.reportError(" Error on getting remote events - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
+							this.reportError(ioe);
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the alias of the RES to update from as the only argument.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the alias of the RES to update from as the only argument.");
 			}
 		};
 		cal.add(ca);
@@ -839,18 +854,18 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				if (arguments.length == 1) {
 					RemoteRES res = ((RemoteRES) remoteResFederators.get(arguments[0]));
 					if (res == null)
-						System.out.println(" No remote RES found for alias " + arguments[0]);
+						this.reportError(" No remote RES found for alias " + arguments[0]);
 					else {
 						try {
-							diffEvents(res);
+							diffEvents(res, this);
 						}
 						catch (IOException ioe) {
-							System.out.println("Error on getting remote event IDs - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
-							ioe.printStackTrace(System.out);
+							this.reportError("Error on getting remote event IDs - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
+							this.reportError(ioe);
 						}
 					}
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the alias of the RES to diff with as the only argument.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the alias of the RES to diff with as the only argument.");
 			}
 		};
 		cal.add(ca);
@@ -930,14 +945,14 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					this.io.executeUpdateQuery(insertQuery);
 				}
 				catch (SQLException sqle) {
-					System.out.println("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while storing remote event.");
-					System.out.println("  query was " + insertQuery);
+					this.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while storing remote event.");
+					this.logError("  query was " + insertQuery);
 				}
 			}
 		}
 		catch (SQLException sqle) {
-			System.out.println("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while checking if remote event already known.");
-			System.out.println("  query was " + existQuery);
+			this.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while checking if remote event already known.");
+			this.logError("  query was " + existQuery);
 		}
 		finally {
 			if (sqr != null)
@@ -974,7 +989,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					}
 					
 					//	woken up despite empty queue ==> shutdown
-					if (dataUpdateQueue.isEmpty()) return;
+					if (dataUpdateQueue.isEmpty())
+						return;
 					
 					//	get update
 					else dataUpdate = ((Runnable) dataUpdateQueue.removeFirst());
@@ -999,8 +1015,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				dataUpdate.run();
 			}
 			catch (Throwable t) {
-				System.out.println("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
-				t.printStackTrace(System.out);
+				logError("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
+				logError(t);
 			}
 		}
 		
@@ -1029,9 +1045,9 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	 * issuedSince parameter is compared against the time when events were
 	 * published locally. This is in order to prevent events that come in over
 	 * multiple hops from being overshadowed (and thus not being forwarded) by
-	 * events that occurred later but came in over less hops.
+	 * events that occurred later but came in over fewer hops.
 	 * @param publishedSince lower bound for event issuing time
-	 * @param sourceClassName the source class orf the events to list
+	 * @param sourceClassName the source class of the events to list
 	 *            (specifying null lists events from all sources)
 	 * @return a list of remote events listed in this GoldenGATE RES.
 	 * @throws IOException
@@ -1045,7 +1061,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		if (publishedSince > 0)
 			query.append(" AND " + EVENT_PUBLICATION_TIME_ATTRIBUTE + " > " + publishedSince);
 		if (sourceClassName != null)
-			query.append(" AND " + SOURCE_CLASS_NAME_ATTRIBUTE + " LIKE '" + sourceClassName + "'");
+			query.append(" AND " + SOURCE_CLASS_NAME_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(sourceClassName) + "'");
 		query.append(" ORDER BY " + EVENT_TIME_ATTRIBUTE);
 		query.append(";");
 		
@@ -1085,11 +1101,13 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			};
 		}
 		catch (SQLException sqle) {
-			System.out.println("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while listing events.");
-			System.out.println("  query was " + query);
+			this.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while listing events.");
+			this.logError("  query was " + query);
+			throw new IOException(sqle.getMessage());
+		}
+		finally {
 			if (sqr != null)
 				sqr.close();
-			throw new IOException(sqle.getMessage());
 		}
 	}
 	
@@ -1243,6 +1261,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	private TreeMap remoteResFederators = new TreeMap();
 	
 	private EventIssuerThread eventIssuerService = null;
+	private AsynchronousWorkQueue eventIssuerMonitor = null;
 	
 	/**
 	 * Background service thread that publishes events from remote RES's in the
@@ -1299,8 +1318,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				dataUpdate.run();
 			}
 			catch (Throwable t) {
-				System.out.println("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
-				t.printStackTrace(System.out);
+				logError("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
+				logError(t);
 			}
 		}
 		
@@ -1362,11 +1381,11 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				//	if so, fetch and enqueue updates
 				if (updateRes != null) try {
 					updateRes.lastAttemptedLookup = currentTime;
-					fetchRemoteEvents(updateRes);
+					fetchRemoteEvents(updateRes, GoldenGateRES.this);
 				}
 				catch (IOException ioe) {
-					System.out.println("Error on getting updates from " + updateRes.domainName + " - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
-					ioe.printStackTrace(System.out);
+					logError("Error on getting updates from " + updateRes.domainName + " - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
+					logError(ioe);
 				}
 				
 				//	give a little time to the others
@@ -1387,14 +1406,14 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		}
 	}
 	
-	private void fetchRemoteEvents(RemoteRES res) throws IOException {
-		System.out.println("GoldenGateRES: getting events from " + res.domainName + " (" + res.address + ":" + res.port + ")");
+	private void fetchRemoteEvents(RemoteRES res, GoldenGateServerActivityLogger log) throws IOException {
+		log.logInfo("GoldenGateRES: getting events from " + res.domainName + " (" + res.address + ":" + res.port + ")");
 		RemoteEventList rel = res.getRemoteEvents(res.latestUpdate, null);
 		while (rel.hasNextEvent()) {
 			ResRemoteEvent re = rel.getNextEvent();
 			re = new ResRemoteEvent(re, res.domainName, res.address, res.port);
 			res.latestUpdate = Math.max(res.latestUpdate, re.eventTime);
-			this.issueEvent(re, res, rel.hasNextEvent());
+			this.issueEvent(re, res, rel.hasNextEvent(), log);
 		}
 	}
 	
@@ -1404,7 +1423,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		}
 	};
 	
-	private void issueEvent(final ResRemoteEvent re, final RemoteRES res, final boolean moreToCome) {
+	private void issueEvent(final ResRemoteEvent re, final RemoteRES res, final boolean moreToCome, final GoldenGateServerActivityLogger log) {
 		
 		//	catch events that have circled back from the local domain
 		if (this.domainName.equals(re.originDomainName))
@@ -1433,8 +1452,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 						}
 					}
 					catch (SQLException sqle) {
-						System.out.println("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while checking event history.");
-						System.out.println("  query was " + lookupQuery);
+						log.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while checking event history.");
+						log.logError("  query was " + lookupQuery);
 					}
 					finally {
 						if (sqr != null)
@@ -1449,14 +1468,14 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 						storeRes(res);
 				}
 				catch (IOException ioe) {
-					System.out.println("Error on update - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
-					ioe.printStackTrace(System.out);
+					log.logError("Error on update - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
+					log.logError(ioe);
 				}
 			}
 		});
 	}
 	
-	private void diffEvents(RemoteRES res) throws IOException {
+	private void diffEvents(RemoteRES res, ComponentActionConsole cac) throws IOException {
 		
 		//	collect local event IDs
 		String lookupQuery = "SELECT " + EVENT_ID_ATTRIBUTE + " FROM " + EVENT_TABLE_NAME + ";";
@@ -1468,8 +1487,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				localEventIDs.add(sqr.getString(0));
 		}
 		catch (SQLException sqle) {
-			System.out.println("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading event history.");
-			System.out.println("  query was " + lookupQuery);
+			cac.reportError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading event history.");
+			cac.reportError("  query was " + lookupQuery);
 			return;
 		}
 		finally {
@@ -1478,7 +1497,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		}
 		
 		//	get remote events and do diff
-		System.out.println("GoldenGateRES: getting events from " + res.domainName + " (" + res.address + ":" + res.port + ")");
+		cac.reportResult("GoldenGateRES: getting events from " + res.domainName + " (" + res.address + ":" + res.port + ")");
 		RemoteEventList rel = res.getRemoteEvents(0, null);
 		while (rel.hasNextEvent()) {
 			ResRemoteEvent re = rel.getNextEvent();
@@ -1486,7 +1505,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			
 			//	we've been missing this event, or it's a recent one, don't miss it
 			if (localEventIDs.add(re.eventId) || (re.eventTime > res.latestUpdate))
-				this.issueEvent(re, res, rel.hasNextEvent());
+				this.issueEvent(re, res, rel.hasNextEvent(), cac);
 			
 			//	remember we had this one
 			res.latestUpdate = Math.max(res.latestUpdate, re.eventTime);

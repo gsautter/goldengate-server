@@ -10,7 +10,7 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
@@ -25,38 +25,28 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package de.uka.ipd.idaho.goldenGateServer.uaa;
+package de.uka.ipd.idaho.goldenGateServer;
 
 /**
- * A user data provider can augment the functionality of the user access
- * authority with additional information on users.
+ * Observer of actions called through the network interface of a GoldenGATE
+ * Server.
  * 
  * @author sautter
  */
-public interface UserDataProvider {
+public interface GoldenGateServerNetworkActionListener {
 	
 	/**
-	 * Retrieve a property of a user. If the specified user does not exist or
-	 * does not have the requested property, this method returns null. There is
-	 * no guarantee that users do not change their properties, so components
-	 * using these properties should re-get them every time they use them, or at
-	 * least periodically.
-	 * @param user the name of the user
-	 * @param name the name of the property
-	 * @return the value of the requested property.
+	 * Receive notification that a network action has been started.
+	 * @param command the action command
+	 * @param wait the waiting time of the action (in milliseconds)
 	 */
-	public abstract String getUserProperty(String user, String name);
+	public abstract void networkActionStarted(String command, int wait);
 	
 	/**
-	 * Retrieve a property of a user. If the specified user does not exist or
-	 * does not have the requested property, this method returns the specified
-	 * default value. There is no guarantee that users do not change their
-	 * properties, so components using these properties should re-get them every
-	 * time they use them, or at least periodically.
-	 * @param user the name of the user
-	 * @param name the name of the property
-	 * @param def a default return value
-	 * @return the value of the requested property.
+	 * Receive notification that a network action has finished.
+	 * @param command the action command
+	 * @param wait the waiting before executing started (in milliseconds)
+	 * @param time the execution time of the action (in milliseconds)
 	 */
-	public abstract String getUserProperty(String user, String name, String def);
+	public abstract void networkActionFinished(String command, int wait, int time);
 }

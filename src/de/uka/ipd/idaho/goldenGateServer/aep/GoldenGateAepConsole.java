@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) / KIT nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -49,6 +49,7 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 	private static final String PAUSE_EVENT_PROCESSORS_COMMAND = "pause";
 	private static final String UNPAUSE_EVENT_PROCESSORS_COMMAND = "unpause";
 	private static final String LIST_EVENT_PROCESSORS_COMMAND = "list";
+	private static final String CHECK_EVENT_PROCESSORS_ALIVE_COMMAND = "checkAlive";
 	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#getActions()
@@ -57,7 +58,7 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 		ArrayList cal = new ArrayList();
 		ComponentAction ca;
 		
-		//	pause all exporters
+		//	pause all event processors
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return PAUSE_EVENT_PROCESSORS_COMMAND;
@@ -71,7 +72,7 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0) {
-					if (GoldenGateAEP.setExpPause(true))
+					if (GoldenGateAEP.setAepPause(true))
 						this.reportResult("Event processors set to pause.");
 					else this.reportResult("Event processors already pausing.");
 				}
@@ -80,7 +81,7 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 		};
 		cal.add(ca);
 		
-		//	un-pause all exporters
+		//	un-pause all event processors
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return UNPAUSE_EVENT_PROCESSORS_COMMAND;
@@ -94,7 +95,7 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0) {
-					if (GoldenGateAEP.setExpPause(false))
+					if (GoldenGateAEP.setAepPause(false))
 						this.reportResult("Event processors un-paused.");
 					else this.reportResult("Event processors not pausing.");
 				}
@@ -103,7 +104,7 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 		};
 		cal.add(ca);
 		
-		//	un-pause all exporters
+		//	list all event processors
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return LIST_EVENT_PROCESSORS_COMMAND;
@@ -119,6 +120,28 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 				if (arguments.length == 0) {
 					this.reportResult("These are the event processors currently installed:");
 					GoldenGateAEP.listInstances(" - ", this);
+				}
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+			}
+		};
+		cal.add(ca);
+		
+		//	check if all event processors are alive
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return CHECK_EVENT_PROCESSORS_ALIVE_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						CHECK_EVENT_PROCESSORS_ALIVE_COMMAND,
+						"Check if all installed event processors are alive, and start new worker thread if not."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length == 0) {
+					this.reportResult("Checking event processors:");
+					GoldenGateAEP.checkInstances(" - ", this);
 				}
 				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}

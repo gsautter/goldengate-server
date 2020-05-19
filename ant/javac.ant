@@ -33,7 +33,9 @@
     		<include name="**/goldenGateServer/*.java" />
     		<include name="**/goldenGateServer/aaa/*.java" />
     		<include name="**/goldenGateServer/aep/*.java" />
+    		<include name="**/goldenGateServer/els/*.java" />
     		<include name="**/goldenGateServer/enr/*.java" />
+    		<include name="**/goldenGateServer/nam/*.java" />
     		<include name="**/goldenGateServer/res/*.java" />
     		<include name="**/goldenGateServer/uaa/*.java" />
     		<include name="**/goldenGateServer/uaa/data/*.java" />

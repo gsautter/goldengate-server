@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) / KIT nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -118,4 +118,48 @@ public interface GoldenGateServerActivityLogger {
 	 * @param message the message to write to the log
 	 */
 	public abstract void logResult(String message);
+	
+	/**
+	 * Dummy instance directing all output to <code>System.out</code>.
+	 */
+	public static final GoldenGateServerActivityLogger sysOut = new GoldenGateServerActivityLogger() {
+		public void logError(String message) {
+			System.out.println(message);
+		}
+		public void logError(Throwable error) {
+			error.printStackTrace(System.out);
+		}
+		public void logWarning(String message) {
+			System.out.println(message);
+		}
+		public void logInfo(String message) {
+			System.out.println(message);
+		}
+		public void logDebug(String message) {
+			System.out.println(message);
+		}
+		public void logActivity(String message) {
+			System.out.println(message);
+		}
+		public void logAlways(String message) {
+			System.out.println(message);
+		}
+		public void logResult(String message) {
+			System.out.println(message);
+		}
+	};
+	
+	/**
+	 * Dummy instance silencing all output.
+	 */
+	public static final GoldenGateServerActivityLogger silent = new GoldenGateServerActivityLogger() {
+		public void logError(String message) {}
+		public void logError(Throwable error) {}
+		public void logWarning(String message) {}
+		public void logInfo(String message) {}
+		public void logDebug(String message) {}
+		public void logActivity(String message) {}
+		public void logAlways(String message) {}
+		public void logResult(String message) {}
+	};
 }

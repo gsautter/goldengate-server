@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) / KIT nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -40,6 +40,7 @@ import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableColumnDefinition;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
+import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActionConsole;
 
@@ -65,6 +66,7 @@ public abstract class AsynchronousDataActionHandler {
 	private String argumentColumnString;
 	
 	private DataActionThread actionThread;
+	private AsynchronousWorkQueue actionQueueMonitor;
 	
 	/**
 	 * @param name the name of the scheduler (letters only, and no spaces)
@@ -152,7 +154,12 @@ public abstract class AsynchronousDataActionHandler {
 	private static final String ACTION_ERRORS_COMMAND = "actionErrors";
 	private static final String WORK_FAST_COMMAND = "workFast";
 	private static final String WORK_SLOW_COMMAND = "workSlow";
+	private static final String WORK_NOW_COMMAND = "workNow";
 	private static final String DUMP_STACK_COMMAND = "dumpStack";
+	
+	//	TODO make commands public
+	
+	//	TODO provide getActions() method taking mapping of generic default commands to custom names and explanations
 	
 	/**
 	 * Retrieve actions to integrate in the console interface of the hosting
@@ -200,7 +207,7 @@ public abstract class AsynchronousDataActionHandler {
 		final String scheduleArgErrorString = scheduleArgErrorStringBuf.toString();
 		final String enqueueArgErrorString = enqueueArgErrorStringBuf.toString();
 		
-		//	schedule re-packing without document update
+		//	schedule action without document update
 		cac = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return SCHEDULE_ACTION_COMMAND;
@@ -233,7 +240,7 @@ public abstract class AsynchronousDataActionHandler {
 		};
 		cal.add(cac);
 		
-		//	schedule re-packing without document update
+		//	schedule action without document update
 		cac = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return ENQUEUE_ACTION_COMMAND;
@@ -261,7 +268,7 @@ public abstract class AsynchronousDataActionHandler {
 		};
 		cal.add(cac);
 		
-		//	check size of re-packing queue
+		//	check size of action queue
 		cac = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return ACTIONS_PENDING_COMMAND;
@@ -277,7 +284,7 @@ public abstract class AsynchronousDataActionHandler {
 				if (arguments.length != 0)
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 				else synchronized (dataActions) {
-					this.reportResult(" " + dataActions.size() + " data actions scheduled for execution.");
+					this.reportResult(" " + dataActions.size() + " data actions scheduled for execution, next due in " + dataActions.getNextDueIn() + "ms");
 				}
 			}
 		};
@@ -303,7 +310,7 @@ public abstract class AsynchronousDataActionHandler {
 		};
 		cal.add(cac);
 		
-		//	check packing errors
+		//	check action errors
 		cac = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return ACTION_ERRORS_COMMAND;
@@ -320,9 +327,9 @@ public abstract class AsynchronousDataActionHandler {
 				if (arguments.length > 1) 
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at most the mode argument.");
 				else if (dataActionErrors.isEmpty())
-					this.reportResult(" No packing errors occurrend for any pending archive.");
+					this.reportResult(" No errors occurrend for any pending action.");
 				else synchronized (dataActionErrors) {
-					this.reportError(" The following packing errors occurrend for pending archives:");
+					this.reportError(" The following errors occurrend for pending actions:");
 					boolean showStackTraces = ((arguments.length == 1) && "-t".equals(arguments[0]));
 					for (Iterator didit = dataActionErrors.keySet().iterator(); didit.hasNext();) {
 						String mDocId = ((String) didit.next());
@@ -336,7 +343,7 @@ public abstract class AsynchronousDataActionHandler {
 		};
 		cal.add(cac);
 		
-		//	activate fast packing
+		//	activate fast working
 		cac = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return WORK_FAST_COMMAND;
@@ -356,7 +363,7 @@ public abstract class AsynchronousDataActionHandler {
 		};
 		cal.add(cac);
 		
-		//	deactivate fast packing
+		//	deactivate fast working
 		cac = new ComponentActionConsole() {
 			public String getActionCommand() {
 				return WORK_SLOW_COMMAND;
@@ -372,6 +379,27 @@ public abstract class AsynchronousDataActionHandler {
 				if (arguments.length != 0) 
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 				else actionThread.setWorkFast(false, this);
+			}
+		};
+		cal.add(cac);
+		
+		//	tell event handler to resume work while sleeping after finishing an event
+		cac = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return WORK_NOW_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						WORK_NOW_COMMAND,
+						"Tell the action handler to resume work if sleeping after completing a data action."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else if (actionThread != null)
+					actionThread.workNow(true);
 			}
 		};
 		cal.add(cac);
@@ -472,6 +500,26 @@ public abstract class AsynchronousDataActionHandler {
 		//	start action worker thread
 		this.actionThread = new DataActionThread(this.name + "ActionWorker");
 		this.actionThread.start();
+		
+		//	link up to monitoring
+		this.actionQueueMonitor = new AsynchronousWorkQueue(this.name) {
+			public String getStatus() {
+				String actionBufferStatus = (dataActions.size() + " actions scheduled, next due in " + dataActions.getNextDueIn() + "ms");
+				String actionThreadStatus;
+				if (AsynchronousDataActionHandler.this.actionThread.actionStart != -1)
+					actionThreadStatus = ("working since " + (System.currentTimeMillis() - AsynchronousDataActionHandler.this.actionThread.actionStart) + "ms");
+				else if (AsynchronousDataActionHandler.this.actionThread.sleepStart != -1) {
+					long time = System.currentTimeMillis();
+					actionThreadStatus = ("sleeping since " + (time - AsynchronousDataActionHandler.this.actionThread.sleepStart) + "ms");
+					if (time < AsynchronousDataActionHandler.this.actionThread.sleepEnd)
+						actionThreadStatus += (", for another " + (AsynchronousDataActionHandler.this.actionThread.sleepEnd - time) + "ms");
+				}
+				else if (AsynchronousDataActionHandler.this.actionThread.actionEnd != -1)
+					actionThreadStatus = ("last event finished " + (System.currentTimeMillis() - AsynchronousDataActionHandler.this.actionThread.actionEnd) + "ms ago");
+				else actionThreadStatus = null;
+				return (this.name + ": " + actionBufferStatus + (AsynchronousDataActionHandler.this.actionThread.workFast ? ", FAST" : "") + ((actionThreadStatus == null) ? "" : (", " + actionThreadStatus)));
+			}
+		};
 	}
 	
 	private static boolean isDefaultValue(String value, String dataType) {
@@ -493,6 +541,8 @@ public abstract class AsynchronousDataActionHandler {
 	 * and thus should be called on system shutdown.
 	 */
 	public void shutdown() {
+		if (this.actionQueueMonitor != null)
+			this.actionQueueMonitor.dispose();
 		if (this.actionThread != null)
 			this.actionThread.shutdown();
 	}
@@ -508,10 +558,41 @@ public abstract class AsynchronousDataActionHandler {
 	 * and the same arguments, a subsequent call to this method does not incur
 	 * a second call to <code>performDataAction()</code>.
 	 * @param dataId the ID of the data object
+	 */
+	public void enqueueDataAction(String dataId) {
+		this.doScheduleDataAction(dataId, noArguments, 0);
+	}
+	
+	/**
+	 * Enqueue an asynchronous action on a data object for immediate (soon as
+	 * possible) execution. If there are many actions in the queue, there might
+	 * be some delay, though.<br>
+	 * If the action was previously scheduled for the same data object (by ID)
+	 * and the same arguments, a subsequent call to this method does not incur
+	 * a second call to <code>performDataAction()</code>.
+	 * @param dataId the ID of the data object
 	 * @param arguments the arguments for the action
 	 */
 	public void enqueueDataAction(String dataId, String[] arguments) {
-		this.doScheduleDataAction(dataId, arguments, 0);
+		this.doScheduleDataAction(dataId, ((arguments == null) ? noArguments : arguments), 0);
+	}
+	
+	/**
+	 * Enqueue an asynchronous action on a data object for immediate (soon as
+	 * possible) execution. If there are many actions in the queue, there might
+	 * be some delay, though.<br>
+	 * If the action was previously scheduled for the same data object (by ID)
+	 * and the same arguments, a subsequent call to this method does not incur
+	 * a second call to <code>performDataAction()</code>.<br>
+	 * If the argument priority is non-zero, the action will be scheduled to
+	 * have its due time in the past, moving it to the front of the queue. The
+	 * argument priority specifies the number of months to move to the past.
+	 * @param dataId the ID of the data object
+	 * @param priority the priority of the action
+	 */
+	public void enqueueDataAction(String dataId, int priority) {
+		long ago = (millisecondsPerMonth * Math.max(priority, 0));
+		this.doScheduleDataAction(dataId, noArguments, -ago);
 	}
 	
 	/**
@@ -530,7 +611,7 @@ public abstract class AsynchronousDataActionHandler {
 	 */
 	public void enqueueDataAction(String dataId, String[] arguments, int priority) {
 		long ago = (millisecondsPerMonth * Math.max(priority, 0));
-		this.doScheduleDataAction(dataId, arguments, -ago);
+		this.doScheduleDataAction(dataId, ((arguments == null) ? noArguments : arguments), -ago);
 	}
 	
 	/**
@@ -667,7 +748,12 @@ public abstract class AsynchronousDataActionHandler {
 	
 	private class DataActionThread extends Thread {
 		private boolean run = true;
-		private boolean sleepAfterAction = true;
+		boolean workFast = false;
+		long actionStart = -1;
+		long actionEnd = -1;
+		private final Object sleepLock = new Object();
+		long sleepStart = -1;
+		long sleepEnd = -1;
 		DataActionThread(String name) {
 			super(name);
 		}
@@ -681,7 +767,7 @@ public abstract class AsynchronousDataActionHandler {
 				synchronized (dataActions) {
 					da = dataActions.getFirstIfDue();
 					if (da == null) {
-						this.sleepAfterAction = true; // deactivate fast working if queue empty or nothing due
+						this.workFast = false; // deactivate fast working if queue empty or nothing due
 						try {
 							dataActions.wait(dataActions.getNextDueIn());
 						} catch (InterruptedException ie) {}
@@ -691,7 +777,10 @@ public abstract class AsynchronousDataActionHandler {
 				
 				//	perform data action
 				long actionStartTime = System.currentTimeMillis();
+				long actionHandlingTime;
 				try {
+					this.actionStart = actionStartTime;
+					this.actionEnd = -1;
 					
 					//	perform scheduled data action
 					performDataAction(da.dataId, da.arguments);
@@ -712,7 +801,7 @@ public abstract class AsynchronousDataActionHandler {
 					}
 				}
 				catch (Exception e) {
-					logger.logError("Exception exporting collection '" + da.dataId + "': " + e.getMessage());
+					logger.logError("Exception performing action on '" + da.dataId + "': " + e.getMessage());
 					logger.logError(e);
 					
 					//	mark action as erroneous if not re-scheduled, and move to end of queue
@@ -728,30 +817,78 @@ public abstract class AsynchronousDataActionHandler {
 						dataActionErrors.put(da.dataId, e);
 					}
 				}
+				finally {
+					long actionEndTime = System.currentTimeMillis();
+					actionHandlingTime = (actionEndTime - actionStartTime);
+					this.actionStart = -1;
+					this.actionEnd = actionEndTime;
+				}
 				
-				//	sleep a little (unless in fast working mode)
-				if (this.sleepAfterAction && this.run) try {
-					long sleepTime = (0 + 
-							1000 + // base sleep
-							(System.currentTimeMillis() - actionStartTime) + // the time we just occupied the CPU or other resources
-							0);
-					logger.logInfo(name + ": sleeping for " + sleepTime + "ms");
-					Thread.sleep(sleepTime);
-				} catch (InterruptedException ie) {}
+				//	return right away if we have a shutdown
+				if (!this.run)
+					return;
+				
+				//	go straight to next action if we're working false
+				if (this.workFast)
+					continue;
+				
+				//	sleep a little
+				long sleepTime = (0 + 
+						1000 + // base sleep
+						actionHandlingTime + // the time we just occupied the CPU or other resources
+						0);
+				logger.logInfo(name + ": sleeping for " + sleepTime + "ms");
+				this.sleepStart = this.actionEnd;
+				this.sleepEnd = (this.sleepStart + sleepTime);
+				
+				//	give the others a little time
+				while (this.run && (sleepTime > 0)) try {
+					synchronized (this.sleepLock) {
+						this.sleepLock.wait(sleepTime);
+					}
+					break; // we've been woken up by regular means (sleep time over or wake-up command) rather than an exception
+				}
+				catch (InterruptedException ie) {
+					sleepTime = (this.sleepEnd - System.currentTimeMillis());
+				}
+				this.sleepStart = -1;
+				this.sleepEnd = -1;
+//				
+//				//	sleep a little (unless in fast working mode)
+//				if (this.sleepAfterAction && this.run) try {
+//					long sleepTime = (0 + 
+//							1000 + // base sleep
+//							(System.currentTimeMillis() - actionStartTime) + // the time we just occupied the CPU or other resources
+//							0);
+//					logger.logInfo(name + ": sleeping for " + sleepTime + "ms");
+//					Thread.sleep(sleepTime);
+//				} catch (InterruptedException ie) {}
 			}
 		}
 		
 		void setWorkFast(boolean workFast, ComponentActionConsole cac) {
-			if (this.sleepAfterAction != workFast) {
+			if (this.workFast == workFast) {
 				if (workFast)
 					cac.reportError("Already working fast");
 				else cac.reportError("Not working fast");
 			}
 			else {
-				this.sleepAfterAction = !workFast;
-				if (workFast)
+				this.workFast = workFast;
+				if (workFast) {
 					cac.reportResult("Fast working activated");
+					this.workNow(false);
+				}
 				else cac.reportResult("Fast working deactivated");
+			}
+		}
+		
+		void workNow(boolean unlessWorkingFast) {
+			if (unlessWorkingFast && this.workFast)
+				return; // not sleeping anyway
+			if (this.sleepStart == -1)
+				return;
+			synchronized (this.sleepLock) {
+				this.sleepLock.notify();
 			}
 		}
 		
@@ -760,6 +897,7 @@ public abstract class AsynchronousDataActionHandler {
 				this.run = false;
 				dataActions.clear();
 				dataActions.notify();
+				this.interrupt(); // interrupt any sleeping or waiting
 			}
 		}
 	}

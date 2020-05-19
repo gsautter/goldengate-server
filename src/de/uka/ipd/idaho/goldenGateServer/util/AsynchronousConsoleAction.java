@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -35,6 +35,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 
 import de.uka.ipd.idaho.gamta.Gamta;
+import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActionConsole;
 import de.uka.ipd.idaho.stringUtils.StringVector;
 
@@ -203,6 +204,11 @@ public abstract class AsynchronousConsoleAction extends ComponentActionConsole {
 					this.actionThread = new AsynchronousActionThread(threadArguments);
 					this.actionThread.setUpdateMonitor(System.out); // TODO use reportXYZ()
 					this.actionThread.startUpdate();
+					this.actionThreadMonitor = new AsynchronousWorkQueue(this.label) {
+						public String getStatus() {
+							return (this.name + ": " + actionThread.status);
+						}
+					};
 				}
 				catch (RuntimeException re) {
 					this.reportError(re.getMessage());
@@ -340,6 +346,7 @@ public abstract class AsynchronousConsoleAction extends ComponentActionConsole {
 	}
 	
 	private AsynchronousActionThread actionThread = null;
+	private AsynchronousWorkQueue actionThreadMonitor = null;
 	
 	private class AsynchronousActionThread extends Thread {
 		private PrintStream out;
@@ -434,6 +441,9 @@ public abstract class AsynchronousConsoleAction extends ComponentActionConsole {
 			
 			synchronized (this.runLock) {
 				this.runLock.notify();
+				if (actionThreadMonitor != null)
+					actionThreadMonitor.dispose();
+				actionThreadMonitor = null;
 				actionThread = null;
 			}
 		}

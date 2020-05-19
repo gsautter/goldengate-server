@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -177,7 +177,7 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 	 * 
 	 * @author sautter
 	 */
-	public abstract class ComponentActionConsole implements ComponentAction {
+	public abstract class ComponentActionConsole implements ComponentAction, GoldenGateServerActivityLogger {
 		private GoldenGateServerActivityLogger resultLogger = null;
 		
 		/** perform the actual action with invocation from the console (command line)
@@ -214,7 +214,7 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		 */
 		public void reportError(String message) {
 			if (this.resultLogger != null)
-				this.resultLogger.logResult(message);
+				this.resultLogger.logError(message);
 		}
 		
 		/**
@@ -226,6 +226,70 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 		public void reportError(Throwable error) {
 			if (this.resultLogger != null)
 				this.resultLogger.logError(error);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logError(java.lang.String)
+		 */
+		public void logError(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logError(message);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logError(java.lang.Throwable)
+		 */
+		public void logError(Throwable error) {
+			if (this.resultLogger != null)
+				this.resultLogger.logError(error);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logWarning(java.lang.String)
+		 */
+		public void logWarning(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logError(message);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logInfo(java.lang.String)
+		 */
+		public void logInfo(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logResult(message);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logDebug(java.lang.String)
+		 */
+		public void logDebug(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logResult(message);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logActivity(java.lang.String)
+		 */
+		public void logActivity(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logActivity(message);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logAlways(java.lang.String)
+		 */
+		public void logAlways(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logResult(message);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger#logResult(java.lang.String)
+		 */
+		public void logResult(String message) {
+			if (this.resultLogger != null)
+				this.resultLogger.logResult(message);
 		}
 		
 		/** perform the actual action with invocation from the console (command line)

@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -45,6 +45,7 @@ import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
+import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
 
 /**
  * GoldenGATE Server Asynchronous Event Processor (AEP) is a convenience super
@@ -58,10 +59,9 @@ import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
  * @author sautter
  */
 public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
-	
 	private static int instanceCount = 0;
 	private static TreeMap instancesByName = new TreeMap();
-	private static synchronized void countInstance(GoldenGateAEP ep) {
+	private static synchronized void registerInstance(GoldenGateAEP ep) {
 		instanceCount++;
 		System.out.println(ep.getEventProcessorName() + ": registered as instance number " + instanceCount + ".");
 		instancesByName.put(ep.getEventProcessorName(), ep);
@@ -73,6 +73,16 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
 			boolean isFlushingQueue = (flushingEventHandler == ep.eventHandler);
 			cac.reportResult(prefix + epName + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (isFlushingQueue ? " FLUSHING" : ""));
+		}
+	}
+	
+	static void checkInstances(String prefix, ComponentActionConsole cac) {
+		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
+			String epName = ((String) enit.next());
+			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
+			if (ep.startEventHandler())
+				cac.reportResult(prefix + epName + " (" + ep.getClass().getName() + "): worker thread restarted");
+			else cac.reportResult(prefix + epName + " (" + ep.getClass().getName() + "): worker thread alive");
 		}
 	}
 	
@@ -108,7 +118,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	private static final Object aepPauseLock = new Object();
 	private static final Set aepPausedInstances = Collections.synchronizedSet(new HashSet());
 	private static boolean aepPause = false;
-	static boolean setExpPause(boolean pause) {
+	static boolean setAepPause(boolean pause) {
 		if (aepPause == pause)
 			return false;
 		else if (pause) {
@@ -128,11 +138,6 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			return true;
 		}
 	}
-	
-	/** the IoProvider to use for sub class specific database interaction */
-	protected IoProvider io;
-	
-	private final String EVENT_TABLE_NAME;
 	
 	private static final String DATA_ID_COLUMN_NAME = "dataId";
 	private static final String DATA_ID_HASH_COLUMN_NAME = "dataIdHash";
@@ -158,26 +163,34 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	/** low-priority marker */
 	protected static final char PRIORITY_LOW = '0';
 	
+	/** the IoProvider to use for sub class specific database interaction */
+	protected IoProvider io;
+	
+	private final String EVENT_TABLE_NAME;
+	private final String eventProcessorName;
+	
 	/**
-	 * Constructor
+	 * Constructor. The argument event processor name must consist of letters
+	 * only and must not include whitespace, as among other things it serves
+	 * as part of the name for the database table this component uses for
+	 * persisting events.
 	 * @param letterCode the letter code identifying the component
+	 * @param eventProcessorName the name of the asynchronous event processor
 	 */
-	protected GoldenGateAEP(String letterCode) {
+	protected GoldenGateAEP(String letterCode, String eventProcessorName) {
 		super(letterCode);
-		this.EVENT_TABLE_NAME = (this.getEventProcessorName() + "Events");
-		countInstance(this);
+		this.eventProcessorName = eventProcessorName;
+		this.EVENT_TABLE_NAME = (this.eventProcessorName + "Events");
+		registerInstance(this);
 	}
 	
 	/**
-	 * This method exists so sub classes can provide an informative name for
-	 * themselves. The name returned by this method must consist of letters only
-	 * and must not include whitespace, as among other things it serves as the
-	 * name for the database table this component uses for persisting events.
-	 * Implementations of this method must not depend on loading any external
-	 * resources because this method is called from the constructor.
+	 * Retrieve the name of the asynchronous event processor.
 	 * @return the name of the event processor
 	 */
-	protected abstract String getEventProcessorName();
+	protected String getEventProcessorName() {
+		return this.eventProcessorName;
+	}
 	
 	/**
 	 * Indicate whether or not events should be persisted even after they have
@@ -185,7 +198,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	 * indicating to persist only events that are waiting in the queue. Sub
 	 * classes are welcome to overwrite this method as needed. A situation in
 	 * which it is sensible to do so is if processing an event takes a
-	 * considerable amount of time or is prone to hang or fail on some way.
+	 * considerable amount of time or is prone to hanging or failing in some
+	 * way.
 	 * @return true if events should be persisted even if already dequeued for
 	 *            processing
 	 */
@@ -255,9 +269,36 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 		
 		//	start event handler thread
+		this.startEventHandler();
+		System.out.println(this.getEventProcessorName() + ": event handler started");
+	}
+	
+	boolean startEventHandler() {
+		if ((this.eventHandler != null) && this.eventHandler.isAlive())
+			return false;
+		if (this.eventQueueMonitor != null)
+			this.eventQueueMonitor.dispose();
 		this.eventHandler = new UpdateEventHandler(this.getEventProcessorName() + "EventHandler");
 		this.eventHandler.start();
-		System.out.println(this.getEventProcessorName() + ": event handler started");
+		this.eventQueueMonitor = new AsynchronousWorkQueue(this.getEventProcessorName()) {
+			public String getStatus() {
+				String eventQueueStatus = (GoldenGateAEP.this.eventQueue.size() + " update events pending (" + GoldenGateAEP.this.eventQueue.highPriorityQueue.size() + "/" + GoldenGateAEP.this.eventQueue.normPriorityQueue.size() + "/" + GoldenGateAEP.this.eventQueue.lowPriorityQueue.size() + ")");
+				String eventProcessorStatus;
+				if (GoldenGateAEP.this.eventHandler.eventStart != -1)
+					eventProcessorStatus = ("working since " + (System.currentTimeMillis() - GoldenGateAEP.this.eventHandler.eventStart) + "ms");
+				else if (GoldenGateAEP.this.eventHandler.sleepStart != -1) {
+					long time = System.currentTimeMillis();
+					eventProcessorStatus = ("sleeping since " + (time - GoldenGateAEP.this.eventHandler.sleepStart) + "ms");
+					if (time < GoldenGateAEP.this.eventHandler.sleepEnd)
+						eventProcessorStatus += (", for another " + (GoldenGateAEP.this.eventHandler.sleepEnd - time) + "ms");
+				}
+				else if (GoldenGateAEP.this.eventHandler.eventEnd != -1)
+					eventProcessorStatus = ("last event finished " + (System.currentTimeMillis() - GoldenGateAEP.this.eventHandler.eventEnd) + "ms ago");
+				else eventProcessorStatus = null;
+				return (this.name + ": " + eventQueueStatus + ((GoldenGateAEP.this.eventHandler == flushingEventHandler) ? ", FLUSHING" : "") + ((eventProcessorStatus == null) ? "" : (", " + eventProcessorStatus)));
+			}
+		};
+		return true;
 	}
 	
 	/**
@@ -268,7 +309,10 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	protected void exitComponent() {
 		
 		//	shut down event handle
-		this.eventHandler.shutdown();
+		if (this.eventQueueMonitor != null)
+			this.eventQueueMonitor.dispose();
+		if (this.eventHandler != null)
+			this.eventHandler.shutdown();
 		System.out.println(this.getEventProcessorName() + ": event handler shut down");
 		
 		//	disconnect from database
@@ -278,11 +322,16 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	private static final String QUEUE_SIZE_COMMAND = "queueSize";
 	private static final String FLUSH_QUEUE_COMMAND = "flushQueue";
 	private static final String FLUSH_STOP_COMMAND = "flushStop";
+	private static final String WAKE_UP_COMMAND = "wakeUp";
 	private static final String CLEAR_QUEUE_COMMAND = "clearQueue";
 	private static final String ENQUEUE_UPDATE_COMMAND = "enqueueUpdate";
 	private static final String ENQUEUE_DELETION_COMMAND = "enqueueDelete";
 	private static final String DUMP_STACK_COMMAND = "dumpStack";
 	private static final String PERSIST_QUEUE_COMMAND = "persistQueue";
+	
+	//	TODO make commands public
+	
+	//	TODO provide getActions() method taking mapping of generic default commands to custom names and explanations
 	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#getActions()
@@ -349,6 +398,27 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 				else if (eventHandler != null)
 					eventHandler.setFlushing(false, this);
+			}
+		};
+		cal.add(ca);
+		
+		//	wake event handler up from sleeping after finishing an event
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return WAKE_UP_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						WAKE_UP_COMMAND,
+						"Wake the event handler up from sleeping after processing an event."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else if (eventHandler != null)
+					eventHandler.wakeUp(true);
 			}
 		};
 		cal.add(ca);
@@ -1016,13 +1086,18 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	}
 	
 	private UpdateEventQueue eventQueue = new UpdateEventQueue();
-	
 	private UpdateEventHandler eventHandler;
+	private AsynchronousWorkQueue eventQueueMonitor;
 	
 	private class UpdateEventHandler extends Thread {
 		private boolean running = true;
 		private boolean flushing = false;
 		char eventPriority = ((char) 0);
+		long eventStart = -1;
+		long eventEnd = -1;
+		private final Object sleepLock = new Object();
+		long sleepStart = -1;
+		long sleepEnd = -1;
 		UpdateEventHandler(String name) {
 			super(name);
 		}
@@ -1076,6 +1151,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 					long eventProcessingStart = System.currentTimeMillis();
 					logInfo(getEventProcessorName() + ": got " + (ue.isDeletion() ? "delete" : "update") + " event for object '" + ue.dataId + "'");
 					this.eventPriority = ue.priority;
+					this.eventStart = eventProcessingStart;
+					this.eventEnd = -1;
 					try {
 						
 						//	load data attributes if not done before
@@ -1102,29 +1179,63 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 						logError(t);
 					}
 					finally {
-						ue.status = UpdateEvent.STATUS_DONE;
-						eventProcessingTime = (System.currentTimeMillis() - eventProcessingStart);
+						long eventProcessingEnd = System.currentTimeMillis();
+						eventProcessingTime = (eventProcessingEnd - eventProcessingStart);
 						logInfo("  - event processed in " + eventProcessingTime + "ms");
 						
 						//	clean up event after processing (if persisted)
+						ue.status = UpdateEvent.STATUS_DONE;
 						if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED)
 							cleanupPersistedEvent(ue);
 						
 						//	clear thread local event priority
 						this.eventPriority = ((char) 0);
+						this.eventStart = -1;
+						this.eventEnd = eventProcessingEnd;
 					}
 				}
 				
-				//	give the others a little time (and the export target as well), dependent on number of event processors and activity (time spent on actual exports)
-				if (!this.flushing && this.running) try {
-					long sleepTime = (0 + 
-							250 + // base sleep
-							(50 * instanceCount) + // a little extra for every instance
-							eventProcessingTime + // the time we just occupied the CPU or other resources
-							0);
-					logInfo(getEventProcessorName() + ": sleeping for " + sleepTime + "ms");
-					Thread.sleep(sleepTime);
-				} catch (InterruptedException ie) {}
+				//	return right away if we have a shutdown
+				if (!this.running)
+					return;
+				
+				//	go straight to next event if we're flushing
+				if (this.flushing)
+					continue;
+				
+				//	compute sleeping time, dependent on number of event processors and activity (time spent on actual event processing)
+				long sleepTime = (0 + 
+						250 + // base sleep
+						(50 * instanceCount) + // a little extra for every instance
+						eventProcessingTime + // the time we just occupied the CPU or other resources
+						0);
+				logInfo(getEventProcessorName() + ": sleeping for " + sleepTime + "ms");
+				this.sleepStart = this.eventEnd;
+				this.sleepEnd = (this.sleepStart + sleepTime);
+				
+				//	give the others a little time
+				while (this.running && (sleepTime > 0)) try {
+					synchronized (this.sleepLock) {
+						this.sleepLock.wait(sleepTime);
+					}
+					break; // we've been woken up by regular means (sleep time over or wake-up command) rather than an exception
+				}
+				catch (InterruptedException ie) {
+					sleepTime = (this.sleepEnd - System.currentTimeMillis());
+				}
+				this.sleepStart = -1;
+				this.sleepEnd = -1;
+//				
+//				//	give the others a little time (and the export target as well), dependent on number of event processors and activity (time spent on actual exports)
+//				if (!this.flushing && this.running) try {
+//					long sleepTime = (0 + 
+//							250 + // base sleep
+//							(50 * instanceCount) + // a little extra for every instance
+//							eventProcessingTime + // the time we just occupied the CPU or other resources
+//							0);
+//					logInfo(getEventProcessorName() + ": sleeping for " + sleepTime + "ms");
+//					Thread.sleep(sleepTime);
+//				} catch (InterruptedException ie) {}
 			}
 		}
 		
@@ -1158,13 +1269,25 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				else cac.reportError("Not in flushing mode.");
 			}
 			else if (setFlushingEventHandler(this, flushing)) {
-				if (flushing)
+				if (flushing) {
 					cac.reportResult("Flushing mode activated.");
+					this.wakeUp(false);
+				}
 				else cac.reportResult("Flushing mode deactivated.");
 			}
 			else if (flushing)
 				cac.reportError("Could not activate flushing mode, only one flushing instance allowed at a time.");
 			else cac.reportError("Could not interrupt flushing instance.");
+		}
+		
+		void wakeUp(boolean unlessFlushing) {
+			if (unlessFlushing && this.flushing)
+				return; // not sleeping anyway
+			if (this.sleepStart == -1)
+				return;
+			synchronized (this.sleepLock) {
+				this.sleepLock.notify();
+			}
 		}
 	}
 	

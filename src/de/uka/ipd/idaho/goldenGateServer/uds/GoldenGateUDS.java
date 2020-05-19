@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -45,6 +45,7 @@ import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
+import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponentRegistry;
 import de.uka.ipd.idaho.goldenGateServer.uaa.UserAccessAuthority;
 import de.uka.ipd.idaho.goldenGateServer.uaa.UserDataProvider;
@@ -101,10 +102,10 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 		this.io.indexColumn(DATA_TABLE_NAME, FIELD_NAME_COLUMN_NAME);
 		
 		//	read fields
-		this.readFieldSets();
+		this.readFieldSets(this);
 	}
 	
-	private void readFieldSets() {
+	private void readFieldSets(GoldenGateServerActivityLogger log) {
 		String fieldSetFileName = this.configuration.getSetting("fieldSetFile", "Fields.xml");
 		try {
 			Reader fsr = new InputStreamReader(new FileInputStream(new File(this.dataPath, fieldSetFileName)), "UTF-8");
@@ -113,8 +114,8 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 			this.fieldSets = fieldSets;
 		}
 		catch (IOException ioe) {
-			System.out.println("Error reading field set definition: " + ioe.getMessage());
-			ioe.printStackTrace(System.out);
+			log.logError("Error reading field set definition: " + ioe.getMessage());
+			log.logError(ioe);
 		}
 	}
 	
@@ -259,7 +260,7 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0)
-					readFieldSets();
+					readFieldSets(this);
 				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
@@ -328,12 +329,13 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 			return uds;
 		}
 		catch (SQLException sqle) {
-			System.out.println("GoldenGateUDS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading document checkout user.");
-			System.out.println("  query was " + query);
+			this.logError("GoldenGateUDS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading document checkout user.");
+			this.logError("  query was " + query);
 			return null;
 		}
 		finally {
-			if (sqr != null) sqr.close();
+			if (sqr != null)
+				sqr.close();
 		}
 	}
 	
@@ -385,8 +387,8 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(updateQuery);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GoldenGateUDS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while updating existing document.");
-				System.out.println("  query was " + updateQuery);
+				this.logError("GoldenGateUDS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while updating existing document.");
+				this.logError("  query was " + updateQuery);
 			}
 		}
 		

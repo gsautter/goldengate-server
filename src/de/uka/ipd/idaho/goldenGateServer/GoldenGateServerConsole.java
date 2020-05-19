@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -39,90 +39,115 @@ import java.net.SocketTimeoutException;
 
 /**
  * @author sautter
- *
  */
 public class GoldenGateServerConsole {
 	
 	//	TODO facilitate ingesting script files from the file system (with '\i', as in psql)
 	
+	/* TODO Only allow valid "change component":
+- create list of valid component prefixes during startup ...
+- .. and transmit it to console on login ...
+- ... as suffix of "WELCOME" line, tab separated
+- change to closest component if:
+  - Levenshtein distance at most <X>
+  - next closest Levenshtein distance at least <X+2>
+- maybe do same for console actions ...
+- ... if maybe with minimum distance of 3 to ensure intent on invasive commands
+	 */
+	
 	private static String currentLetterCode = "";
 	public static void main(String[] args) throws Exception {
 		int ncPort = 15808;
 		int cTimeout = 2;
+		String cAuth = null;
 		for (int a = 0; a < args.length; a++) {
 			args[a] = args[a].trim();
 			if (args[a].startsWith("-p="))
 				ncPort = Integer.parseInt(args[a].substring("-p=".length()).trim());
 			if (args[a].startsWith("-t="))
 				cTimeout = Integer.parseInt(args[a].substring("-t=".length()).trim());
+			if (args[a].startsWith("-a="))
+				cAuth = args[a].substring("-a=".length()).trim();
 		}
 		if (cTimeout < 2)
 			cTimeout = 2;
 		
-		//	start masking System.in
-		ConsoleMasker cm = new ConsoleMasker();
-		cm.start();
-		
-		//	read password
-		System.out.print("Enter Password: ");
+		//	start reading console input
 		final BufferedReader commandReader = new BufferedReader(new InputStreamReader(System.in));
-		String password = commandReader.readLine();
 		
-		//	stop masking System.in
-		cm.exit();
+		//	get password if not submitted via console command
+		if (cAuth == null) {
+			
+			//	start masking System.in
+			ConsoleMasker cm = new ConsoleMasker();
+			cm.start();
+			
+			//	read password
+			System.out.print("Enter Password: ");
+			cAuth = commandReader.readLine();
+			
+			//	stop masking System.in
+			cm.exit();
+		}
 		
 		//	connect to server
-		Socket cSocket;
+		Socket cSocket = null;
 		PrintStream cOut;
 		int attempts = 0;
 		while (true) {
 			attempts++;
-			System.out.println("Connecting to GoldenGATE Server on port " + ncPort + ", attempt " + attempts + " ...");
+			printLocalMessage("Connecting to GoldenGATE Server on port " + ncPort + ", attempt " + attempts + " ...");
 			try {
 				cSocket = new Socket();
 				cSocket.connect(new InetSocketAddress(InetAddress.getLocalHost().getHostAddress(), ncPort), 2000);
 				
 				cOut = new PrintStream(cSocket.getOutputStream(), true);
-				System.out.println(" ==> Connection successful, authenticating ...");
-				cOut.println(password);
+				printLocalMessage(" ==> Connection successful, authenticating ...");
+				cOut.println(cAuth);
 				break;
 			}
 			catch (ConnectException ce) {
 				if (attempts < 10) {
-					System.out.println(" ==> Connection failed, will retry in a second");
+					printLocalMessage(" ==> Connection failed, will retry in a second");
 					Thread.sleep(1000);
 					continue;
 				}
 				else {
-					System.out.println(" ==> Connection failed, no more attempts");
-					System.out.println("");
-					System.out.println("Unable to connect to GoldenGATE Server on port " + ncPort + ".");
+					printLocalError(" ==> Connection failed, no more attempts");
+					printLocalError("");
+					printLocalError("Unable to connect to GoldenGATE Server on port " + ncPort + ".");
 					if (ncPort == 15808)
-						System.out.println("Use '-p=<portNumber>' to connect to a non-standard port");
-					System.out.println("If you just started GoldenGATE Server, please try again in a few seconds");
+						printLocalMessage("Use '-p=<portNumber>' to connect to a non-standard port");
+					printLocalMessage("If you just started GoldenGATE Server, please try again in a few seconds");
+					if (cSocket != null) try {
+						cSocket.close();
+					} catch (Exception e) { /* we'r quitting anyway, just cleaning up */ }
 					return;
 				}
 			}
 			catch (SocketTimeoutException ste) {
-				System.out.println(" ==> Connection failed, only one console can be connected at a time.");
+				printLocalError(" ==> Connection failed, only one console can be connected at a time.");
+				if (cSocket != null) try {
+					cSocket.close();
+				} catch (Exception e) { /* we'r quitting anyway, just cleaning up */ }
 				return;
 			}
 		}
 		
 		//	handle timeout
 		final Socket socket = cSocket;
-		final PrintStream sOut = cOut;
-		final BufferedReader sIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+		final PrintStream srvOut = cOut;
+		final BufferedReader srvIn = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 		socket.setSoTimeout(1000 * cTimeout);
 		String response;
 		try {
-			response = sIn.readLine();
+			response = srvIn.readLine();
 		}
 		catch (SocketTimeoutException ste) {
-			System.out.println("There is already another console connected (only one can be at a time),\n" +
+			printLocalError("There is already another console connected (only one can be at a time),\n" +
 					"  or the server failed to respond within " + cTimeout + " seconds.");
 			if (cTimeout <= 2)
-				System.out.println("Use '-t=<timeoutInSeconds>' to specify a longer timeout");
+				printLocalMessage("Use '-t=<timeoutInSeconds>' to specify a longer timeout");
 			return;
 		}
 		
@@ -130,12 +155,12 @@ public class GoldenGateServerConsole {
 		if ("WELCOME".equals(response)) {
 			
 			//	print welcome message
-			System.out.println(" ==> Authentication successful, have fun");
-			System.out.println("");
-			System.out.println("Global commands:");
-			System.out.println(" - type 'exit' to exit the console");
-			System.out.println(" - type '?' to display help information");
-			System.out.println("");
+			printLocalMessage(" ==> Authentication successful, have fun");
+			printLocalMessage("");
+			printLocalMessage("Global commands:");
+			printLocalMessage(" - type 'exit' to exit the console");
+			printLocalMessage(" - type '?' to display help information");
+			printLocalMessage("");
 			
 			//	relay server output to console
 			socket.setSoTimeout(0);
@@ -144,27 +169,26 @@ public class GoldenGateServerConsole {
 					String line;
 					boolean remoteExit = true;
 					try {
-						while ((line = sIn.readLine()) != null) {
+						while ((line = srvIn.readLine()) != null) {
 							if ("GOODBYE".equals(line))
 								remoteExit = false;
 							else if ("COMMAND_DONE".equals(line))
-								System.out.print("GgServer" + ((currentLetterCode.length() == 0) ? "" : ("." + currentLetterCode)) + ">");
-							else System.out.println(line);
+								printInputHeader();
+							else printServerMessage(line);
 						}
 						
-						if (remoteExit) {
-							System.out.println("Disconnected by server.");
-							System.exit(0);
-						}
+						if (remoteExit)
+							printLocalError("Disconnected by server.");
 						else socket.close();
+						System.exit(0);
 					}
 					catch (IOException ioe) {
 						String msg = ioe.getMessage();
 						if ((msg != null) && msg.startsWith("Connection reset")) {
-							System.out.println("Disconnected by server.");
+							printLocalError("Disconnected by server.");
 							System.exit(0);
 						}
-						else System.out.println("Error reading server response: " + ioe.getMessage());
+						else printLocalMessage("Error reading server response: " + ioe.getMessage());
 					}
 				}
 			};
@@ -173,26 +197,27 @@ public class GoldenGateServerConsole {
 		
 		//	report error and exit
 		else {
-			System.out.println(" ==> " + response);
+			printLocalError(" ==> " + response);
 			return;
 		}
 		
 		//	set to empty component prefix
-		sOut.println("cc");
+		srvOut.println("cc");
 		
-		//	read commands
+		//	read and relay commands
 		while (true) try {
 			String commandString = commandReader.readLine();
 			if (commandString == null)
 				return;
-			
 			commandString = commandString.trim();
 			
-			if ("".equals(currentLetterCode) && "exit".equals(commandString)) {
-				sOut.println("GOODBYE");
+			//	handle exit command locally
+			if (("".equals(currentLetterCode) && "exit".equals(commandString)) || ".exit".equals(commandString)) {
+				srvOut.println("GOODBYE");
 				return;
 			}
 			
+			//	change local letter code (for displaying)
 			if ("cc".equals(commandString))
 				currentLetterCode = "";
 			else if (commandString.startsWith("cc ")) {
@@ -201,13 +226,59 @@ public class GoldenGateServerConsole {
 					currentLetterCode = currentLetterCode.substring(0, currentLetterCode.indexOf(' ')).trim();
 			}
 			
-			if (commandString.length() != 0)
-				sOut.println(commandString.trim());
+			//	send command to server if not empty
+			if (commandString.length() == 0)
+				printInputHeader();
+			else srvOut.println(commandString.trim());
 		}
 		catch (Exception e) {
-			System.out.println("Error reading or executing console command: " + e.getMessage());
+			printLocalError("Error reading or executing console command: " + e.getMessage());
 		}
 	}
+	
+	private static String stackTraceFormat = null;
+	static void printServerMessage(String msg) {
+		
+		//	catch start and end of stack traces
+		if (msg.matches("T[BCN]\\:\\:")) {
+			stackTraceFormat = GoldenGateServerMessageFormatter.getFormat(msg.charAt(0), msg.charAt(1));
+			return; // actual stack trace only starts in next line
+		}
+		else if ("::T".equals(msg)) {
+			stackTraceFormat = null;
+			return; // only marks end of stack trace
+		}
+		
+		//	crop format off message
+		String format;
+		if ((msg.length() > 4) && msg.substring(0, 4).matches("[REWID][BCN]\\:\\:")) {
+			format = GoldenGateServerMessageFormatter.getFormat(msg.charAt(0), msg.charAt(1));
+			msg = msg.substring(4);
+		}
+		else if (stackTraceFormat != null)
+			format = stackTraceFormat;
+		else format = GoldenGateServerMessageFormatter.getFormat('R', 'C');
+		
+		//	print message
+		GoldenGateServerMessageFormatter.printMessage(msg, format, INPUT_FORMAT, System.out);
+	}
+	
+	static void printLocalMessage(String msg) {
+		GoldenGateServerMessageFormatter.printMessage(msg, LOCAL_MESSAGE_FORMAT, INPUT_FORMAT, System.out);
+	}
+	
+	static void printLocalError(String msg) {
+		GoldenGateServerMessageFormatter.printMessage(msg, LOCAL_ERROR_FORMAT, INPUT_FORMAT, System.out);
+	}
+	
+	static void printInputHeader() {
+		System.out.print("\u001B[0m" + "\u001B[" + INPUT_HEADER_FORMAT + "m" + "GgServer" + ((currentLetterCode.length() == 0) ? "" : ("." + currentLetterCode)) + ">" + "\u001B[0m" + "\u001B[" + INPUT_FORMAT + "m");
+	}
+	
+	private static final String LOCAL_MESSAGE_FORMAT = "38;5;27;40";
+	private static final String LOCAL_ERROR_FORMAT = "38;5;196;40";
+	private static final String INPUT_HEADER_FORMAT = "1;32;40";
+	private static final String INPUT_FORMAT = "32;40";
 	
 	private static class ConsoleMasker extends Thread {
 		private boolean running = true;

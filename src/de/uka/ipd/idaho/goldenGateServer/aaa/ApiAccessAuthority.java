@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) / KIT nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -41,6 +41,7 @@ import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
+import de.uka.ipd.idaho.easyIO.util.RandomByteSource;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponentRegistry;
 import de.uka.ipd.idaho.goldenGateServer.uaa.UserAccessAuthority;
@@ -453,19 +454,25 @@ public class ApiAccessAuthority extends AbstractGoldenGateServerComponent implem
 	
 	private static final String tokenChars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 	private static String createToken() {
-		StringBuffer token = new StringBuffer();
-		while (token.length() < TOKEN_LENGTH) {
-			int i = ((int) (Math.random() * Integer.MAX_VALUE));
-			while (i > 0) {
-				int c = (i % tokenChars.length());
-				token.append(tokenChars.charAt(c));
-				i = (i / tokenChars.length());
-			}
-		}
-		if (token.length() > TOKEN_LENGTH)
-			token.delete(TOKEN_LENGTH, token.length());
-		return token.toString();
+		String token = RandomByteSource.getRandomStringVarBase((TOKEN_LENGTH * 6 /* good approximation for per-char bits in our char set of 62 */), tokenChars);
+		if (token.length() > TOKEN_LENGTH) // will most likely be the case because we have slightly less than 6 bits per character
+			return token.substring(0, TOKEN_LENGTH);
+		else return token;
 	}
+//	private static String createToken() {
+//		StringBuffer token = new StringBuffer();
+//		while (token.length() < TOKEN_LENGTH) {
+//			int i = ((int) (Math.random() * Integer.MAX_VALUE));
+//			while (i > 0) {
+//				int c = (i % tokenChars.length());
+//				token.append(tokenChars.charAt(c));
+//				i = (i / tokenChars.length());
+//			}
+//		}
+//		if (token.length() > TOKEN_LENGTH)
+//			token.delete(TOKEN_LENGTH, token.length());
+//		return token.toString();
+//	}
 //	
 //	public static void main(String[] args) throws Exception {
 //		System.out.println(createToken());

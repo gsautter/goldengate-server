@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -34,6 +34,8 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -121,6 +123,7 @@ public class AuthenticationManager {
 	}
 	
 	private static final String ACCOUNT_FILE_EXTENSION = ".account.cnfg";
+	private static final String USER_NAME_FILE_NAME = "cache/userNames.cnfg";
 	
 	private static final String NEW_ACCOUNT_NAME = "<Create New Account>";
 	private static final String HOST_SETTING = "host";
@@ -133,6 +136,8 @@ public class AuthenticationManager {
 	
 	private static StringVector accountNames = new StringVector();
 	private static HashMap accountsByName = new HashMap();
+	
+	private static Settings rememberedUserNames = null;
 	
 	private static Account adHocAccount = null; // the account to use when no data provider is given
 	private static Account activeAccount = null;
@@ -151,9 +156,9 @@ public class AuthenticationManager {
 	/**
 	 * Initialize the AuthenticationManager using the data provided by some data
 	 * provider. Specifying a data provider through this method enables managing
-	 * accounts beyond plain authentication. However, if this method ahs
-	 * prevoiusly invoked with a different data provider, all data from the
-	 * earlier provider will be discarted. Use the isInitialized() method to
+	 * accounts beyond plain authentication. However, if this method has been
+	 * previously invoked with a different data provider, all data from the
+	 * earlier provider will be discarded. Use the isInitialized() method to
 	 * check if another data provider has been handed over before.
 	 * @param newDataProvider the data provider to retrieve data from
 	 */
@@ -161,6 +166,7 @@ public class AuthenticationManager {
 		accountNames.clear();
 		accountsByName.clear();
 		dataProvider = newDataProvider;
+		rememberedUserNames = null;
 		
 		String[] dataNames = dataProvider.getDataNames();
 		
@@ -179,6 +185,14 @@ public class AuthenticationManager {
 		if (dataProvider.isDataEditable() || accountNames.isEmpty()) {
 			accountNames.insertElementAt(NEW_ACCOUNT_NAME, 0);
 			accountsByName.put(NEW_ACCOUNT_NAME, null);
+		}
+		
+		//	load remembered user names
+		if (dataProvider.isDataAvailable(USER_NAME_FILE_NAME)) try {
+			rememberedUserNames = Settings.loadSettings(dataProvider.getInputStream(USER_NAME_FILE_NAME));
+		}
+		catch (IOException ioe) {
+			System.out.println(ioe.getClass().getName() + " (" + ioe.getMessage() + ") while loading remembered user names");
 		}
 	}
 	
@@ -311,7 +325,7 @@ public class AuthenticationManager {
 			if (account.equals(activeAccount)) logout();
 			accountNames.removeAll(account.getName());
 			accountsByName.remove(account.getName());
-			return dataProvider.deleteData(account.getName().hashCode() + ACCOUNT_FILE_EXTENSION);
+			return dataProvider.deleteData("Acc" + account.getName().hashCode() + ACCOUNT_FILE_EXTENSION);
 		}
 	}
 	
@@ -324,18 +338,12 @@ public class AuthenticationManager {
 		
 		//	log out
 		logout();
-//		
-//		//	store account data ==> no need to do that, accounts are stored as they are created or modified
-//		for (int a = 0; a < accountNames.size(); a++) {
-//			String accountName = accountNames.get(a);
-//			Account account = ((Account) accountsByName.get(accountName));
-//			saveAccount(account);
-//		}
 		
 		//	clean up
 		accountNames.clear();
 		accountsByName.clear();
 		dataProvider = null;
+		rememberedUserNames = null;
 	}
 	
 	private static final String PERSONALIZED_ACCOUNTS_NAME = "(Personalized Accounts, Never Export)";
@@ -356,13 +364,13 @@ public class AuthenticationManager {
 			for (int a = 0; a < accountNames.size(); a++) {
 				String testAccountName = accountNames.get(a);
 				if (testAccountName.indexOf('@') != -1)
-					dataNames.addElementIgnoreDuplicates(testAccountName.hashCode() + ACCOUNT_FILE_EXTENSION);
+					dataNames.addElementIgnoreDuplicates("Acc" + testAccountName.hashCode() + ACCOUNT_FILE_EXTENSION);
 			}
 			dataNames.sortLexicographically(false, false);
 			return dataNames.toStringArray();
 		}
 		else {
-			String[] dataNames = {(accountName.hashCode() + ACCOUNT_FILE_EXTENSION)};
+			String[] dataNames = {("Acc" + accountName.hashCode() + ACCOUNT_FILE_EXTENSION)};
 			return dataNames;
 		}
 	}
@@ -603,7 +611,8 @@ public class AuthenticationManager {
 	}
 	
 	private static void saveAccount(Account account) {
-		if ((account == null) || (dataProvider == null) || !dataProvider.isDataEditable()) return;
+		if ((account == null) || (dataProvider == null) || !dataProvider.isDataEditable())
+			return;
 		
 		//	gather data
 		Settings accountData = new Settings();
@@ -617,7 +626,7 @@ public class AuthenticationManager {
 		
 		//	store account data
 		if (dataProvider.isDataEditable()) try {
-			OutputStream os = dataProvider.getOutputStream(account.getName().hashCode() + ACCOUNT_FILE_EXTENSION);
+			OutputStream os = dataProvider.getOutputStream("Acc" + account.getName().hashCode() + ACCOUNT_FILE_EXTENSION);
 			accountData.storeAsText(os);
 			os.flush();
 			os.close();
@@ -625,6 +634,36 @@ public class AuthenticationManager {
 		catch (IOException ioe) {
 			System.out.println(ioe.getClass().getName() + " (" + ioe.getMessage() + ") while saving account data for " + account.getName());
 		}
+	}
+	
+	private static boolean canRememberUserNames() {
+		return ((dataProvider != null) && dataProvider.isDataEditable(USER_NAME_FILE_NAME));
+	}
+	
+	private static void rememberUserName(String host, String userName) {
+		if ((dataProvider == null) || !dataProvider.isDataEditable(USER_NAME_FILE_NAME))
+			return;
+		if (rememberedUserNames == null)
+			rememberedUserNames = new Settings();
+		
+		String oldUserName = getRememberedUserName(host);
+		if (userName.equals(oldUserName))
+			return;
+		
+		rememberedUserNames.setSetting(("Usr" + host.hashCode()), userName);
+		try {
+			OutputStream os = dataProvider.getOutputStream(USER_NAME_FILE_NAME);
+			rememberedUserNames.storeAsText(os);
+			os.flush();
+			os.close();
+		}
+		catch (IOException ioe) {
+			System.out.println(ioe.getClass().getName() + " (" + ioe.getMessage() + ") while saving remembered user names");
+		}
+	}
+	
+	private static String getRememberedUserName(String host) {
+		return ((rememberedUserNames == null) ? null : rememberedUserNames.getSetting("Usr" + host.hashCode()));
 	}
 	
 	/**
@@ -734,12 +773,12 @@ public class AuthenticationManager {
 	 * @return an AuthenticatedClient for communicating with the backing server
 	 */
 	public static AuthenticatedClient getAuthenticatedClient() {
-		if (ensureLoggedIn())
+		if (ensureLoggedIn(false, false))
 			return authClient;
 		else return null;
 	}
 	
-	private static boolean ensureLoggedIn() {
+	private static boolean ensureLoggedIn(boolean rememberUserName, boolean changePassword) {
 		
 		//	check if account data complete (might have come through setters ...)
 		if (activeAccount != null) {
@@ -850,19 +889,19 @@ public class AuthenticationManager {
 				else if (authClient.login(activeAccount.userName, activeAccount.password))
 					return true;
 				
-				//	could not re-login;
+				//	could not re-login
 				else {
 					/* clear password so authentication dialog re-opens on
 					 * recursive call (might happen though login data was used
-					 * successfully before, eg if password was changed on server
-					 * side) */
+					 * successfully before, e.g. if password was changed on
+					 * server side) */
 					activeAccount.password = null;
 					
 					//	clear clients in order to enanble re-creation, thus get rid of old session ID
 					authClient = null;
 					
 					//	re-try authentication
-					return ensureLoggedIn();
+					return ensureLoggedIn(false, false);
 				}
 			}
 			
@@ -887,9 +926,13 @@ public class AuthenticationManager {
 			String userName = activeAccount.userName;
 			String password = activeAccount.password;
 			
+			//	get user name from remembered ones
+			if (userName == null)
+				userName = getRememberedUserName(activeAccount.host);
+			
 			//	prompt for authentication data if missing
 			if ((userName == null) || (password == null)) {
-				AuthenticationDialog ad = new AuthenticationDialog(("Log in to " + activeAccount.host), activeAccount.host, userName);
+				AuthenticationDialog ad = new AuthenticationDialog(activeAccount.host, userName, rememberUserName, changePassword);
 				ad.setLocationRelativeTo(DialogPanel.getTopWindow());
 				ad.setVisible(true);
 				
@@ -898,6 +941,8 @@ public class AuthenticationManager {
 				
 				userName = ad.userNameValue;
 				password = ad.passwordValue;
+				rememberUserName = ad.rememberUserName.isSelected();
+				changePassword = ad.changePassword.isSelected();
 			}
 			
 			/* remember user name in order to use it in prompt, for caching, or
@@ -912,6 +957,19 @@ public class AuthenticationManager {
 					
 					//	remember password in order to re-connect later on in case of a session timeout
 					activeAccount.password = password;
+					
+					//	remember user name for host
+					if (rememberUserName)
+						rememberUserName(activeAccount.host, userName);
+					
+					//	change password if selected
+					if (changePassword) {
+						String newPassword = changePassword(activeAccount.host, userName, password);
+						if (newPassword != null)
+							activeAccount.password = newPassword;
+					}
+					
+					//	indicate success
 					return true;
 				}
 				
@@ -922,7 +980,7 @@ public class AuthenticationManager {
 					activeAccount.password = null;
 					
 					//	re-try authentication
-					return ensureLoggedIn();
+					return ensureLoggedIn(rememberUserName, changePassword);
 				}
 			}
 			
@@ -947,7 +1005,7 @@ public class AuthenticationManager {
 	/**
 	 * Log out from the backing server. This will render the
 	 * AuthenticatedClients retrieved through the getAuthenticatedClient()
-	 * method useless, any refering code will have to obtain a new
+	 * method useless, any referring code will have to obtain a new
 	 * AuthenticatedClient in order to access the server again. Use with care.
 	 */
 	public static void logout() {
@@ -960,7 +1018,7 @@ public class AuthenticationManager {
 			activeAccount = null;
 		}
 		catch (IOException ioe) {
-			JOptionPane.showMessageDialog(DialogPanel.getTopWindow(), ("An error occurred while logging out from the GoldenGATE Server at\n" + activeAccount.host + ":" + activeAccount.port + "\n" + ioe.getMessage()), ("Error on Logout"), JOptionPane.ERROR_MESSAGE);
+			JOptionPane.showMessageDialog(DialogPanel.getTopWindow(), ("An error occurred while logging out from the GoldenGATE Server at\n" + activeAccount.host + ":" + activeAccount.port + "\n" + ioe.getMessage()), "Error on Logout", JOptionPane.ERROR_MESSAGE);
 		}
 	}
 	
@@ -971,41 +1029,40 @@ public class AuthenticationManager {
 				((adHocAccount == null) ? "" : ((adHocAccount.userName == null) ? "" : adHocAccount.userName)), 
 				((adHocAccount == null) ? "" : ((adHocAccount.password == null) ? "" : adHocAccount.password))
 				);
-		if (adHocAccount != null) account.useHttp = adHocAccount.useHttp;
+		if (adHocAccount != null)
+			account.useHttp = adHocAccount.useHttp;
 		
 		AccountEditor ae = new AccountEditor(account, "Please Complete Connection And Login Data");
 		ae.setLocationRelativeTo(DialogPanel.getTopWindow());
 		ae.setVisible(true);
 		
 		if (ae.isCommitted()) {
-			
 			if (dataProvider != null) {
 				saveAccount(account);
 				accountNames.addElementIgnoreDuplicates(account.getName());
 				accountsByName.put(account.getName(), account);
 			}
-			
 			return account;
 		}
-		
 		else return null;
 	}
 	
 	private static class AuthenticationDialog extends DialogPanel {
-		
 		private JTextField userNameField = new JTextField();
 		private JPasswordField passwordField = new JPasswordField();
 		
 		String userNameValue;
 		String passwordValue;
 		
-		AuthenticationDialog(String title, String address, String userName) {
-			super(title, true);
-			
-			JPanel fieldPanel = new JPanel(new GridBagLayout());
+		JCheckBox rememberUserName = new JCheckBox("Remember User Name");
+		JCheckBox changePassword = new JCheckBox("Change Password");
+		
+		AuthenticationDialog(String host, String userName, boolean rememberUserName, boolean changePassword) {
+			super(("Log in to " + host), true);
 			
 			this.userNameField.setBorder(BorderFactory.createLoweredBevelBorder());
-			if (userName != null) this.userNameField.setText(userName) ;
+			if (userName != null)
+				this.userNameField.setText(userName) ;
 			
 			this.passwordField.setBorder(BorderFactory.createLoweredBevelBorder());
 			this.passwordField.addActionListener(new ActionListener() {
@@ -1013,7 +1070,25 @@ public class AuthenticationManager {
 					commit();
 				}
 			});
+			if (userName != null)
+				this.addWindowListener(new WindowAdapter() {
+					public void windowOpened(WindowEvent we) {
+						passwordField.requestFocusInWindow();
+						AuthenticationDialog.this.removeWindowListener(this);
+					}
+					public void windowGainedFocus(WindowEvent we) {
+						passwordField.requestFocusInWindow();
+						AuthenticationDialog.this.removeWindowListener(this);
+					}
+				});
 			
+			this.rememberUserName.setToolTipText("Remember user name after successful login?");
+			this.rememberUserName.setSelected(rememberUserName && canRememberUserNames());
+			this.rememberUserName.setEnabled(canRememberUserNames());
+			this.changePassword.setToolTipText("Change password after successful login?");
+			this.changePassword.setSelected(changePassword);
+			
+			JPanel fieldPanel = new JPanel(new GridBagLayout());
 			final GridBagConstraints gbc = new GridBagConstraints();
 			gbc.insets.top = 2;
 			gbc.insets.bottom = 2;
@@ -1029,13 +1104,13 @@ public class AuthenticationManager {
 			
 			gbc.gridwidth = 6;
 			gbc.weightx = 4;
-			fieldPanel.add(new JLabel("Please enter your login data for the GoldeGATE Server at " + address), gbc.clone());
+			fieldPanel.add(new JLabel("Please enter your login data for the GoldeGATE Server at " + host), gbc.clone());
 			
 			gbc.gridy++;
 			gbc.gridx = 0;
 			gbc.weightx = 0;
 			gbc.gridwidth = 1;
-			fieldPanel.add(new JLabel("User Name", JLabel.LEFT), gbc.clone());
+			fieldPanel.add(new JLabel("User Name", JLabel.RIGHT), gbc.clone());
 			gbc.gridx = 1;
 			gbc.weightx = 2;
 			gbc.gridwidth = 2;
@@ -1043,11 +1118,21 @@ public class AuthenticationManager {
 			gbc.gridx = 3;
 			gbc.weightx = 1;
 			gbc.gridwidth = 1;
-			fieldPanel.add(new JLabel("Password", JLabel.LEFT), gbc.clone());
+			fieldPanel.add(new JLabel("Password", JLabel.RIGHT), gbc.clone());
 			gbc.gridx = 4;
 			gbc.weightx = 2;
 			gbc.gridwidth = 2;
 			fieldPanel.add(this.passwordField, gbc.clone());
+			
+			gbc.gridy++;
+			gbc.gridx = 1;
+			gbc.weightx = 2;
+			gbc.gridwidth = 2;
+			fieldPanel.add(this.rememberUserName, gbc.clone());
+			gbc.gridx = 4;
+			gbc.weightx = 2;
+			gbc.gridwidth = 2;
+			fieldPanel.add(this.changePassword, gbc.clone());
 			
 			JButton okButton = new JButton("OK");
 			okButton.setBorder(BorderFactory.createRaisedBevelBorder());
@@ -1078,7 +1163,7 @@ public class AuthenticationManager {
 			
 			//	ensure dialog is closed with button
 			this.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-			this.setSize(500, 110);
+			this.setSize(500, 135);
 		}
 		
 		private void commit() {
@@ -1096,6 +1181,138 @@ public class AuthenticationManager {
 				//	we are done here
 				dispose();
 			}
+		}
+	}
+	
+	private static String changePassword(String host, String userName, String oldPassword) {
+		if (authClient == null)
+			return null;
+		
+		ChangePasswordDialog cpd = new ChangePasswordDialog(host, userName);
+		cpd.setLocationRelativeTo(DialogPanel.getTopWindow());
+		cpd.setVisible(true);
+		
+		if (cpd.newPasswordValue == null)
+			return null;
+		if (cpd.newPasswordValue.equals(oldPassword))
+			return null;
+		
+		try {
+			authClient.setPassword(oldPassword, cpd.newPasswordValue);
+			JOptionPane.showMessageDialog(DialogPanel.getTopWindow(), ("Password changes successfully for the GoldenGATE Server at\n" + host), "Password Changed Successfully", JOptionPane.INFORMATION_MESSAGE);
+			return cpd.newPasswordValue;
+		}
+		catch (IOException ioe) {
+			System.out.println(ioe.getClass().getName() + " (" + ioe.getMessage() + ") while changing password for user " + userName + " at " + host);
+			ioe.printStackTrace(System.out);
+			int choice = JOptionPane.showConfirmDialog(DialogPanel.getTopWindow(), ("An error occurred while changing your password for the GoldenGATE Server at\n" + host + "\n" + ioe.getMessage() + "\n\nTry again?"), "Error Changing Password", JOptionPane.YES_NO_OPTION, JOptionPane.ERROR_MESSAGE);
+			return ((choice == JOptionPane.YES_OPTION) ? changePassword(host, userName, oldPassword) : null);
+		}
+	}
+	
+	private static class ChangePasswordDialog extends DialogPanel {
+		private JPasswordField newPasswordField = new JPasswordField();
+		private JPasswordField confirmPasswordField = new JPasswordField();
+		
+		String newPasswordValue;
+		
+		ChangePasswordDialog(String host, String userName) {
+			super(("Change Password for " + userName + "@" + host), true);
+			
+			this.newPasswordField.setBorder(BorderFactory.createLoweredBevelBorder());
+			this.confirmPasswordField.setBorder(BorderFactory.createLoweredBevelBorder());
+			this.confirmPasswordField.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ae) {
+					commit();
+				}
+			});
+			
+			JPanel fieldPanel = new JPanel(new GridBagLayout());
+			final GridBagConstraints gbc = new GridBagConstraints();
+			gbc.insets.top = 2;
+			gbc.insets.bottom = 2;
+			gbc.insets.left = 5;
+			gbc.insets.right = 5;
+			gbc.fill = GridBagConstraints.HORIZONTAL;
+			gbc.weightx = 1;
+			gbc.weighty = 0;
+			gbc.gridwidth = 1;
+			gbc.gridheight = 1;
+			gbc.gridx = 0;
+			gbc.gridy = 0;
+			
+			gbc.gridwidth = 4;
+			gbc.weightx = 4;
+			fieldPanel.add(new JLabel("<HTML>Please enter a new password for the GoldeGATE Server at<BR/>" + host + "</HTML>"), gbc.clone());
+			
+			gbc.gridy++;
+			gbc.gridx = 0;
+			gbc.weightx = 0;
+			gbc.gridwidth = 2;
+			fieldPanel.add(new JLabel("Enter New Password", JLabel.RIGHT), gbc.clone());
+			gbc.gridx = 2;
+			gbc.weightx = 2;
+			gbc.gridwidth = 2;
+			fieldPanel.add(this.newPasswordField, gbc.clone());
+			
+			gbc.gridy++;
+			gbc.gridx = 0;
+			gbc.weightx = 0;
+			gbc.gridwidth = 2;
+			fieldPanel.add(new JLabel("Confirm New Password", JLabel.RIGHT), gbc.clone());
+			gbc.gridx = 2;
+			gbc.weightx = 2;
+			gbc.gridwidth = 2;
+			fieldPanel.add(this.confirmPasswordField, gbc.clone());
+			
+			JButton okButton = new JButton("OK");
+			okButton.setBorder(BorderFactory.createRaisedBevelBorder());
+			okButton.setPreferredSize(new Dimension(100, 21));
+			okButton.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ae) {
+					commit();
+				}
+			});
+			
+			JButton cancelButton = new JButton("Cancel");
+			cancelButton.setBorder(BorderFactory.createRaisedBevelBorder());
+			cancelButton.setPreferredSize(new Dimension(100, 21));
+			cancelButton.addActionListener(new ActionListener() {
+				public void actionPerformed(ActionEvent ae) {
+					newPasswordValue = null;
+					dispose();
+				}
+			});
+			
+			JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+			buttonPanel.add(okButton);
+			buttonPanel.add(cancelButton);
+			
+			this.add(fieldPanel, BorderLayout.CENTER);
+			this.add(buttonPanel, BorderLayout.SOUTH);
+			
+			//	ensure dialog is closed with button
+			this.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+			this.setSize(300, 150);
+		}
+		
+		private void commit() {
+			String newPassword = new String(this.newPasswordField.getPassword()).trim();
+			String confirmPassword = new String(this.confirmPasswordField.getPassword()).trim();
+			if (!newPassword.equals(confirmPassword)) {
+				JOptionPane.showMessageDialog(this, "The new password does not match the confirmation, please try again.", "New Password Confirmation Error", JOptionPane.ERROR_MESSAGE);
+				this.newPasswordField.setText("");
+				this.confirmPasswordField.setText("");
+				return;
+			}
+			if (newPassword.length() < 6) {
+				JOptionPane.showMessageDialog(this, "The new password is too short, please try again.", "New Password Too Short", JOptionPane.ERROR_MESSAGE);
+				this.newPasswordField.setText("");
+				this.confirmPasswordField.setText("");
+				return;
+			}
+			this.newPasswordValue = newPassword;
+			dispose();
 		}
 	}
 }

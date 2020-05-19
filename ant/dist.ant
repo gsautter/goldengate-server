@@ -8,7 +8,7 @@
 	<target name="zips" depends="backendzip,frontendzip,serverclient,authmanager,datauploaderzip">
 	</target>
 	
-	<target name="backendzip" depends="serverjar,serverconsolejar,aaajar,enrjar,aepjar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
+	<target name="backendzip" depends="serverjar,serverconsolejar,aaajar,namjar,enrjar,elsjar,aepjar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
 		<delete file="${app.server}"/>
 		<zip destfile="${app.server}">
 			<fileset dir="${file.home}/server"/>
@@ -47,9 +47,11 @@
 		<jar destfile="${jar.serverconsole}" manifest="${file.home}/MANIFEST.serverconsole.MF">
 			<fileset dir="${build.home}/classes">
 				<include name="**/goldenGateServer/GoldenGateServerConsole*.class" />
+				<include name="**/goldenGateServer/GoldenGateServerMessageFormatter*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/GoldenGateServerConsole.java" />
+				<include name="**/goldenGateServer/GoldenGateServerMessageFormatter.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
@@ -87,6 +89,32 @@
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/enr/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="elsjar">
+		<delete file="${jar.els}" />
+		<jar destfile="${jar.els}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/els/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/els/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="namjar">
+		<delete file="${jar.nam}" />
+		<jar destfile="${jar.nam}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/nam/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/nam/*.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
@@ -181,6 +209,9 @@
 				<include name="**/goldenGateServer/client/*.class" />
 				<include name="**/goldenGateServer/util/*.class" />
 				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction*.class" />
+				<exclude name="**/goldenGateServer/util/AsynchronousDataActionHandler*.class" />
+				<exclude name="**/goldenGateServer/util/IdentifierKeyedDataObjectStore*.class" />
+				<exclude name="**/goldenGateServer/util/SlaveInstallerUtils*.class" />
 				<include name="**/goldenGateServer/utilities/DownloadServlet*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
@@ -189,6 +220,9 @@
 				<include name="**/goldenGateServer/client/*.java" />
 				<include name="**/goldenGateServer/util/*.java" />
 				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction.java" />
+				<exclude name="**/goldenGateServer/util/AsynchronousDataActionHandler.java" />
+				<exclude name="**/goldenGateServer/util/IdentifierKeyedDataObjectStore.java" />
+				<exclude name="**/goldenGateServer/util/SlaveInstallerUtils.java" />
 				<include name="**/goldenGateServer/utilities/DownloadServlet.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
@@ -335,12 +369,18 @@
 				<include name="**/goldenGateServer/client/ServerConnection*.class" />
 				<include name="**/goldenGateServer/util/*.class" />
 				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction*.class" />
+				<exclude name="**/goldenGateServer/util/AsynchronousDataActionHandler*.class" />
+				<exclude name="**/goldenGateServer/util/IdentifierKeyedDataObjectStore*.class" />
+				<exclude name="**/goldenGateServer/util/SlaveInstallerUtils*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
 				<include name="**/goldenGateServer/client/ServerConnection.java" />
 				<include name="**/goldenGateServer/util/*.java" />
 				<exclude name="**/goldenGateServer/util/AsynchronousConsoleAction.java" />
+				<exclude name="**/goldenGateServer/util/AsynchronousDataActionHandler.java" />
+				<exclude name="**/goldenGateServer/util/IdentifierKeyedDataObjectStore.java" />
+				<exclude name="**/goldenGateServer/util/SlaveInstallerUtils.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>

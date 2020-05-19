@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -647,11 +647,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	
 	// login data for access from within the same JVM (comparison via ==)
 	/** user name for administrator super user account, for performing administrative actions without login from within the same JVM */
-	public static final String SUPERUSER_NAME = "SUPERUSER";
+	public static final String SUPERUSER_NAME = RandomByteSource.getGUID(); //"SUPERUSER"; random string is way safer, and since we use '==' anyway, content of string is not relevant
 	
 	/** user name for administrator super user account, for performing administrative actions without login from within the same JVM */
-	public static final String SUPERUSER_PASSWORD = "SUPERPASSWORD";
-	
+//	public static final String SUPERUSER_PASSWORD = "SUPERPASSWORD";
+	static final String SUPERUSER_PASSWORD = RandomByteSource.getGUID(); //"SUPERPASSWORD"; random string  is way safer, and since we use '==' anyway, content of string is not relevant
 	
 	private static final String USER_NAME = "name";
 	private static final String PASSWORD = "password";
@@ -1054,9 +1054,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	 *         the specified password is valid
 	 */
 	public boolean authenticate(String userName, String password) {
-		if ((userName == null) || (password == null)) return false;
+		if ((userName == null) || (password == null))
+			return false;
 		
-		if ((SUPERUSER_NAME == userName) && (SUPERUSER_PASSWORD == password)) return true;
+		if ((SUPERUSER_NAME == userName) && (SUPERUSER_PASSWORD == password))
+			return true;
 		
 		User user = this.getUserForName(userName);
 		return ((user != null) && user.testPassword(password));
@@ -1069,9 +1071,11 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	 *         access, false otherwise
 	 */
 	public boolean isAdmin(String userName) {
-		if (userName == null) return false;
+		if (userName == null)
+			return false;
 		
-		if (SUPERUSER_NAME == userName) return true;
+		if (SUPERUSER_NAME == userName)
+			return true;
 		
 		User user = this.getUserForName(userName);
 		if ((user != null) && user.isAdmin) return true;

@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -407,10 +407,11 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 1) {
 					String error = createRole(arguments[0]);
-					if (error == null) System.out.println(" Role '" + arguments[0] + "' created successfully.");
-					else System.out.println(" Error creating role '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" Role '" + arguments[0] + "' created successfully.");
+					else this.reportError(" Error creating role '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the role name only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the role name only.");
 			}
 		};
 		cal.add(ca);
@@ -430,10 +431,11 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 1) {
 					String error = deleteRole(arguments[0]);
-					if (error == null) System.out.println(" Role '" + arguments[0] + "' deleted successfully.");
-					else System.out.println(" Error deleting role '" + arguments[0] + "': " + error);
+					if (error == null)
+						this.reportResult(" Role '" + arguments[0] + "' deleted successfully.");
+					else this.reportError(" Error deleting role '" + arguments[0] + "': " + error);
 				}
-				else System.out.println(" Invalid arguments for '" + this.getActionCommand() + "', specify the role name only.");
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify the role name only.");
 			}
 		};
 		cal.add(ca);
@@ -500,7 +502,6 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 	private static final String IMPLY_ROLE_COMMAND = "implyRole";
 	private static final String UNIMPLY_ROLE_COMMAND = "unimplyRole";
 	
-//	private abstract class ListAction implements ComponentActionNetwork {
 	private abstract class ListAction extends ComponentActionNetwork {
 		private String actionCommand;
 		ListAction(String actionCommand) {
@@ -548,7 +549,6 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		abstract String[] getList() throws IOException;
 	}
 	
-//	private abstract class GetRolesOrPermissionsAction implements ComponentActionNetwork {
 	private abstract class GetRolesOrPermissionsAction extends ComponentActionNetwork {
 		private String actionCommand;
 		GetRolesOrPermissionsAction(String actionCommand) {
@@ -599,7 +599,6 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		abstract String[] getRolesOrPermissions(String userOrRoleName) throws IOException;
 	}
 	
-//	private abstract class ModifyRolesOrPermissionsAction implements ComponentActionNetwork {
 	private abstract class ModifyRolesOrPermissionsAction extends ComponentActionNetwork {
 		private String actionCommand;
 		ModifyRolesOrPermissionsAction(String actionCommand) {
@@ -678,11 +677,14 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 		public void performActionConsole(String[] arguments) {
 			if (arguments.length == 2) {
 				String error = this.performAction(arguments[0], arguments[1]);
-				if (error == null) System.out.println(" " + this.object + " '" + arguments[1] + "' " + this.action + "ed successfully " + this.actionPrep + " " + this.subject + " '" + arguments[0] + "'.");
-				else System.out.println(" Error " + this.action + "ing " + this.object + " '" + arguments[1] + "' " + this.actionPrep + " " + this.subject + " '" + arguments[0] + "': " + error);
-				if (error != null) System.out.println(error);
+				if (error == null)
+					this.reportResult(" " + this.object + " '" + arguments[1] + "' " + this.action + "ed successfully " + this.actionPrep + " " + this.subject + " '" + arguments[0] + "'.");
+				else {
+					this.reportError(" Error " + this.action + "ing " + this.object + " '" + arguments[1] + "' " + this.actionPrep + " " + this.subject + " '" + arguments[0] + "': " + error);
+					this.reportError(error);
+				}
 			}
-			else System.out.println(this.getActionCommand() + " requires 2 arguments: the " + this.subject + " to modify, and the " + this.object + " to " + this.action + ".");
+			else this.reportError(this.getActionCommand() + " requires 2 arguments: the " + this.subject + " to modify, and the " + this.object + " to " + this.action + ".");
 		}
 		abstract String performAction(String userOrRoleName, String roleOrPermission);
 	}
@@ -711,16 +713,16 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 			if (arguments.length == 1) {
 				try {
 					String[] rolesOrPermissions = this.getRolesOrPermissions(arguments[0]);
-					System.out.println(this.object + "s of " + this.subject + " '" + arguments[0] + "'");
+					this.reportResult(this.object + "s of " + this.subject + " '" + arguments[0] + "'");
 					for (int rp = 0; rp < rolesOrPermissions.length; rp++)
-						System.out.println("  - " + rolesOrPermissions[rp]);
+						this.reportResult("  - " + rolesOrPermissions[rp]);
 				}
 				catch (IOException ioe) {
-					System.out.println(ioe.getMessage());
+					this.reportError(ioe.getMessage());
 				}
 				
 			}
-			else System.out.println(this.getActionCommand() + " requires 1 argument: the " + this.subject + " to list the " + this.object + "s for.");
+			else this.reportError(this.getActionCommand() + " requires 1 argument: the " + this.subject + " to list the " + this.object + "s for.");
 		}
 		abstract String[] getRolesOrPermissions(String userOrRoleName) throws IOException;
 	}
@@ -872,8 +874,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while assigning role '" + roles[r] + "' to user '" + userName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while assigning role '" + roles[r] + "' to user '" + userName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -899,8 +901,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while revoking role '" + roles[r] + "' from user '" + userName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while revoking role '" + roles[r] + "' from user '" + userName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -930,8 +932,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 					return null;
 				}
 				catch (SQLException sqle) {
-					System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while creating role '" + roleName + "'.");
-					System.out.println("  query was " + query);
+					this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while creating role '" + roleName + "'.");
+					this.logError("  query was " + query);
 					return "Database access error, see log for details";
 				}
 			}
@@ -961,8 +963,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while deleting role '" + roleName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while deleting role '" + roleName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 			query = "DELETE FROM " + ROLE_TABLE_NAME + " WHERE " + ROLE_NAME_COLUMEN_NAME + " = '" + EasyIO.sqlEscape(roleName) + "';";
@@ -971,8 +973,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				return null;
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while deleting role '" + roleName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while deleting role '" + roleName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -1057,8 +1059,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while implying role '" + roles[r] + "' with role '" + roleName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while implying role '" + roles[r] + "' with role '" + roleName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -1084,8 +1086,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while removing implied role '" + roles[r] + "' from role '" + roleName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while removing implied role '" + roles[r] + "' from role '" + roleName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -1182,8 +1184,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while adding permission '" + permissions[p] + "' to role '" + roleName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while adding permission '" + permissions[p] + "' to role '" + roleName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -1209,8 +1211,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 				this.io.executeUpdateQuery(query);
 			}
 			catch (SQLException sqle) {
-				System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while removing permission '" + permissions[p] + "' from role '" + roleName + "'.");
-				System.out.println("  query was " + query);
+				this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while removing permission '" + permissions[p] + "' from role '" + roleName + "'.");
+				this.logError("  query was " + query);
 				return "Database access error, see log for details";
 			}
 		}
@@ -1231,8 +1233,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 			return role;
 		}
 		catch (SQLException sqle) {
-			System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading role '" + roleName + "'.");
-			System.out.println("  query was " + query);
+			this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading role '" + roleName + "'.");
+			this.logError("  query was " + query);
 			return null;
 		}
 	}
@@ -1260,8 +1262,8 @@ public class GoldenGateUPS extends AbstractGoldenGateServerComponent implements 
 			return user;
 		}
 		catch (SQLException sqle) {
-			System.out.println("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading user '" + userName + "'.");
-			System.out.println("  query was " + query);
+			this.logError("GgServerUPS: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while loading user '" + userName + "'.");
+			this.logError("  query was " + query);
 			return null;
 		}
 	}

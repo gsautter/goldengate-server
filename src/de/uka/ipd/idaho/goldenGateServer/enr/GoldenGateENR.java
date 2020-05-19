@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) / KIT nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -29,8 +29,10 @@ package de.uka.ipd.idaho.goldenGateServer.enr;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.FilterReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -167,10 +169,13 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 				
 				//	read notification type and path info
 				String nTypeName = input.readLine();
+				logInfo("Notification type is " + nTypeName);
 				String nPathInfo = input.readLine();
+				logInfo("Path info is " + nPathInfo);
 				
 				//	read user name
 				String nUserName = input.readLine();
+				logInfo("User name is " + nUserName);
 				
 				//	get notification type and receiver
 				NotificationType nType = ((NotificationType) notificationTypesByName.get(nTypeName));
@@ -181,11 +186,37 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 					output.newLine();
 					return;
 				}
-				notificationTypeCounts.add(nType);
+				notificationTypeCounts.add(nType.name);
 				
 				//	read notification data and pass it to receiver
-				Object nData = JsonParser.parseJson(input);
+//				Object nData = JsonParser.parseJson(input);
+				final StringBuffer nDataBuf = new StringBuffer();
 				try {
+					Object nData = JsonParser.parseJson(new FilterReader(input) {
+						public int read() throws IOException {
+							try {
+								int r = super.read();
+								nDataBuf.append((char) r);
+								return r;
+							}
+							catch (IOException ioe) {
+								logWarning("ENR: padding 1 space");
+								return ((int) ' ');
+							}
+						}
+						public int read(char[] cbuf, int off, int len) throws IOException {
+							try {
+								int r = super.read(cbuf, off, len);
+								nDataBuf.append(cbuf, off, r);
+								return r;
+							}
+							catch (IOException ioe) {
+								logWarning("ENR: padding " + len + " spaces");
+								Arrays.fill(cbuf, off, len, ' ');
+								return len;
+							}
+						}
+					});
 					//	TODO validate against type ???
 					rec.receive(new Notification(nType, nPathInfo, nUserName, nData));
 					
@@ -196,6 +227,7 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 				catch (Exception e) {
 					logError("GoldenGateENR: error forwarding '" + nTypeName + "' notification: " + e.getMessage());
 					logError(e);
+					logError("Request data read: " + nDataBuf);
 					
 					//	send error (hedging against null message)
 					output.write("" + e.getMessage());

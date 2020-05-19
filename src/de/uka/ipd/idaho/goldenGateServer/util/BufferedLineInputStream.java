@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) / KIT nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) / KIT nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -110,7 +110,7 @@ public class BufferedLineInputStream extends BufferedInputStream {
 			else lineEnd++;
 		}
 		
-		//	didn't find line end by end of buffer, increase buffer size
+		//	didn't find line end before end of buffer, increase buffer size
 		if (lineEnd == lineBufferLength) {
 			this.reset();
 			return this.readLine(lineBufferLength + defaultLineBufferLength);
@@ -139,7 +139,7 @@ public class BufferedLineInputStream extends BufferedInputStream {
 	
 	//	!!! TEST ONLY !!!
 	public static void main(String[] args) throws IOException {
-		String str = "Liné1\rLinè2\nLine3\r\n\r\nLinê4\n";
+		String str = "Lin\u00E81\rLin\u00E92\nLine3\r\n\r\nLin\u00EA4\nLine5\r";
 		System.out.println(str);
 		System.out.println("-----");
 		BufferedLineInputStream blin = new BufferedLineInputStream(new ByteArrayInputStream(str.getBytes("UTF-8")), "UTF-8");

@@ -10,11 +10,11 @@
  *     * Redistributions in binary form must reproduce the above copyright
  *       notice, this list of conditions and the following disclaimer in the
  *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the Universität Karlsruhe (TH) nor the
+ *     * Neither the name of the Universitaet Karlsruhe (TH) nor the
  *       names of its contributors may be used to endorse or promote products
  *       derived from this software without specific prior written permission.
  *
- * THIS SOFTWARE IS PROVIDED BY UNIVERSITÄT KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
+ * THIS SOFTWARE IS PROVIDED BY UNIVERSITAET KARLSRUHE (TH) / KIT AND CONTRIBUTORS 
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
  * THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
  * ARE DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
@@ -121,8 +121,8 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	
 	/**
 	 * Link the server component to other components via the
-	 * GoldenGateServerComponentRegistry. Note: This default implementation does nothing,
-	 * sub classes are welcome to overwrite it as needed.
+	 * GoldenGateServerComponentRegistry. This default implementation does
+	 * nothing, sub classes are welcome to overwrite it as needed.
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#link()
 	 */
 	public void link() {}
@@ -131,6 +131,8 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	 * Initialize the parts of the server component that require links to other
 	 * components. This method is called after all components are linked. At
 	 * this point, all components are linked and ready to fully interact with.
+	 * This default implementation does nothing, sub classes are welcome to
+	 * overwrite it as needed.
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#linkInit()
 	 */
 	public void linkInit() {}
