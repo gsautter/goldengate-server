@@ -27,6 +27,8 @@
  */
 package de.uka.ipd.idaho.goldenGateServer;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.Map;
@@ -43,11 +45,22 @@ import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActi
  */
 public abstract class AsynchronousWorkQueue {
 	private static Map instancesByName = Collections.synchronizedMap(new TreeMap(String.CASE_INSENSITIVE_ORDER));
+	static int getInstanceCount() {
+		return instancesByName.size();
+	}
 	static void listInstances(String prefix, ComponentActionConsole cac) {
 		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
 			String awqName = ((String) enit.next());
 			AsynchronousWorkQueue awq = ((AsynchronousWorkQueue) instancesByName.get(awqName));
 			cac.reportResult(prefix + awq.getStatus());
+		}
+	}
+	static void listInstances(String prefix, BufferedWriter output) throws IOException {
+		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
+			String awqName = ((String) enit.next());
+			AsynchronousWorkQueue awq = ((AsynchronousWorkQueue) instancesByName.get(awqName));
+			output.write(prefix + awq.getStatus());
+			output.newLine();
 		}
 	}
 	

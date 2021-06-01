@@ -85,6 +85,29 @@ public class UserAccessAuthority extends AbstractGoldenGateServerComponent imple
 	
 	private IoProvider io;
 	
+	/*
+TODO Add notifications about user actions and modifications to GgServer:
+- event types:
+  - user created
+  - user deleted
+    ==> helps catch no-admin scenario ...
+  - login
+  - logout
+  - direct permission change
+  - role association change
+  - group association change (once we have DAA and user groups)
+  - (general) property change (e.g. user data)
+- specific fields (on top of general events)
+  - user name
+  - property name
+  - old and new property value (if applicable)
+==> allows replicating user data ...
+==> ... and with that real multi-master operation
+  ==> should the need ever arise ...
+  ==> need to figure out how to safely transfer password hash and salt, though ...
+    ==> might need user replication service with extra pre-shared secret
+	 */
+	
 	/** Constructor passing 'UAA' as the letter code to super constructor
 	 */
 	public UserAccessAuthority() {

@@ -773,12 +773,24 @@ public class AuthenticationManager {
 	 * @return an AuthenticatedClient for communicating with the backing server
 	 */
 	public static AuthenticatedClient getAuthenticatedClient() {
-		if (ensureLoggedIn(false, false))
+		return getAuthenticatedClient(false);
+	}
+	
+	/**
+	 * Retrieve an AuthenticatedClient for communicating with the backing
+	 * server. If this method returns an AuthenticatedClient, it is logged in
+	 * and ready to use. If a connection to the backing server could not be
+	 * established, this method returns null.
+	 * @param passive waive login attempt if not done before?
+	 * @return an AuthenticatedClient for communicating with the backing server
+	 */
+	public static AuthenticatedClient getAuthenticatedClient(boolean passive) {
+		if (ensureLoggedIn(false, false, passive))
 			return authClient;
 		else return null;
 	}
 	
-	private static boolean ensureLoggedIn(boolean rememberUserName, boolean changePassword) {
+	private static boolean ensureLoggedIn(boolean rememberUserName, boolean changePassword, boolean passive) {
 		
 		//	check if account data complete (might have come through setters ...)
 		if (activeAccount != null) {
@@ -790,7 +802,8 @@ public class AuthenticationManager {
 		
 		//	no account selected so far
 		if (activeAccount == null) {
-			
+			if (passive)
+				return false; // we only want to use existing authentication
 			Account account = null;
 			
 			//	only ad-hoc authentication possible
@@ -820,25 +833,28 @@ public class AuthenticationManager {
 					
 					String[] accNames = ((String[]) accNameList.toArray(new String[accNameList.size()]));
 					
-					Object o = JOptionPane.showInputDialog(DialogPanel.getTopWindow(), "Please select the account to use for connection.", "Select Account", JOptionPane.QUESTION_MESSAGE, null, accNames, preSelectedAccName);
+					Object accObj = JOptionPane.showInputDialog(DialogPanel.getTopWindow(), "Please select the account to use for connection.", "Select Account", JOptionPane.QUESTION_MESSAGE, null, accNames, preSelectedAccName);
 					
 					//	dialog cancelled
-					if (o == null) return false;
+					if (accObj == null)
+						return false;
 					
 					//	get account, create one if asked so
-					account = ((Account) accountsByName.get(o.toString()));
+					account = ((Account) accountsByName.get(accObj.toString()));
 					
 					//	check if ad-hoc account chosen
-					if ((account == null) && (adHocAccount != null) && o.equals(adHocAccount.getName()))
+					if ((account == null) && (adHocAccount != null) && accObj.equals(adHocAccount.getName()))
 						account = adHocAccount;
 				}
 			}
 			
 			//	create account if asked so
-			if (account == null) account = createAccount();
+			if (account == null)
+				account = createAccount();
 			
 			//	create dialog cancelled
-			if (account == null) return false;
+			if (account == null)
+				return false;
 			
 			//	remember account
 			activeAccount = new Account(account);
@@ -846,6 +862,8 @@ public class AuthenticationManager {
 		
 		//	no connector created so far
 		if (authClient == null) {
+			if (passive)
+				return false; // we only want to use existing authentication
 			
 			if (activeAccount.useHttp) {
 				
@@ -891,17 +909,20 @@ public class AuthenticationManager {
 				
 				//	could not re-login
 				else {
+					if (passive)
+						return false; // we only want to use existing authentication
+					
 					/* clear password so authentication dialog re-opens on
 					 * recursive call (might happen though login data was used
 					 * successfully before, e.g. if password was changed on
 					 * server side) */
 					activeAccount.password = null;
 					
-					//	clear clients in order to enanble re-creation, thus get rid of old session ID
+					//	clear clients in order to enable re-creation, thus get rid of old session ID
 					authClient = null;
 					
 					//	re-try authentication
-					return ensureLoggedIn(false, false);
+					return ensureLoggedIn(false, false, false);
 				}
 			}
 			
@@ -921,6 +942,8 @@ public class AuthenticationManager {
 		
 		//	not logged in
 		else {
+			if (passive)
+				return false; // we only want to use existing authentication
 			
 			//	get authentication data
 			String userName = activeAccount.userName;
@@ -980,7 +1003,7 @@ public class AuthenticationManager {
 					activeAccount.password = null;
 					
 					//	re-try authentication
-					return ensureLoggedIn(rememberUserName, changePassword);
+					return ensureLoggedIn(rememberUserName, changePassword, false);
 				}
 			}
 			

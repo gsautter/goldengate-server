@@ -179,6 +179,16 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 		}
 		
 		/**
+		 * Retrieve the centrally configured user name to use for writing links
+		 * to the underlying data objects. Sub classes can also use other user
+		 * names, or none at all, if data storage does not require user names.
+		 * @return the update user name
+		 */
+		protected String getUpdateUserName() {
+			return this.host.updateUserName;
+		}
+		
+		/**
 		 * Write external links through to the data object they belongs to. The
 		 * returned array holds the portion of the argument links that could
 		 * not actually be written.
@@ -201,6 +211,7 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 	private LinkWriter[] linkWriters = {};
 	private LinkedHashSet linkHandlers = new LinkedHashSet();
 	private Set suspendedDataIDs = Collections.synchronizedSet(new HashSet());
+	private String updateUserName = UPDATE_USER_NAME;
 	
 	/** Zero-argument constructor handing 'ELS' to the super class */
 	public GoldenGateELS() {
@@ -225,6 +236,9 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 		td.addColumn(LINK_STATUS_COLUMN_NAME, TableDefinition.CHAR_DATATYPE, 1);
 		if (!this.io.ensureTable(td, true))
 			throw new RuntimeException("GoldenGateELS: cannot work without database access.");
+		
+		//	get update user name
+		this.updateUserName = this.configuration.getSetting("updateUserName", this.updateUserName);
 		
 		//	add indexes
 		this.io.indexColumn(LINK_TABLE_NAME, DATA_ID_COLUMN_NAME);

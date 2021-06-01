@@ -8,7 +8,7 @@
 	<target name="zips" depends="backendzip,frontendzip,serverclient,authmanager,datauploaderzip">
 	</target>
 	
-	<target name="backendzip" depends="serverjar,serverconsolejar,aaajar,namjar,enrjar,elsjar,aepjar,resjar,uaajar,udsjar,upsjar,serverextenderjar">
+	<target name="backendzip" depends="serverjar,serverconsolejar,serverwatchdogjar,slaveutilsjar,httpsjar,aaajar,namjar,enrjar,elsjar,aepjar,resjar,uaajar,udsjar,upsjar,dtajar,serverextenderjar">
 		<delete file="${app.server}"/>
 		<zip destfile="${app.server}">
 			<fileset dir="${file.home}/server"/>
@@ -30,13 +30,14 @@
 		<jar destfile="${jar.server}" manifest="${file.home}/MANIFEST.server.MF">
 			<fileset dir="${build.home}/classes">
 				<include name="**/goldenGateServer/*.class" />
-				<include name="**/goldenGateServer/util/*.class" />
 				<exclude name="**/goldenGateServer/GoldenGateServerConsole*.class" />
+				<include name="**/goldenGateServer/util/*.class" />
+				<include name="**/goldenGateServer/util/*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/*.java" />
-				<include name="**/goldenGateServer/util/*.java" />
 				<exclude name="**/goldenGateServer/GoldenGateServerConsole.java" />
+				<include name="**/goldenGateServer/util/*.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
@@ -64,6 +65,51 @@
 			<fileset dir="${build.home}/classes" includes="**/utilities/InstallerUtils*.class"/>
 			<fileset dir="${src.home}" includes="**/utilities/ServerComponentInstaller.java"/>
 			<fileset dir="${src.home}" includes="**/utilities/InstallerUtils.java"/>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="serverwatchdogjar">
+		<delete file="${jar.serverwatchdog}"/>
+		<jar destfile="${jar.serverwatchdog}" manifest="${file.home}/MANIFEST.serverwatchdog.MF">
+			<fileset dir="${build.home}/classes" includes="**/goldenGateServer/GoldenGateServerConstants.class"/>
+			<fileset dir="${build.home}/classes" includes="**/goldenGateServer/GoldenGateServerNetworkMonitoringConstants.class"/>
+			<fileset dir="${build.home}/classes" includes="**/goldenGateServer/client/ServerConnection*.class"/>
+			<fileset dir="${build.home}/classes" includes="**/goldenGateServer/util/BufferedLineInputStream.class"/>
+			<fileset dir="${build.home}/classes" includes="**/goldenGateServer/util/BufferedLineOutputStream.class"/>
+			<fileset dir="${build.home}/classes" includes="**/goldenGateServer/utilities/GoldenGateServerWatchdog*.class"/>
+			<fileset dir="${src.home}" includes="**/goldenGateServer/GoldenGateServerConstants.java"/>
+			<fileset dir="${src.home}" includes="**/goldenGateServer/GoldenGateServerNetworkMonitoringConstants.java"/>
+			<fileset dir="${src.home}" includes="**/goldenGateServer/client/ServerConnection.java"/>
+			<fileset dir="${src.home}" includes="**/goldenGateServer/util/BufferedLineInputStream.java"/>
+			<fileset dir="${src.home}" includes="**/goldenGateServer/util/BufferedLineOutputStream.java"/>
+			<fileset dir="${src.home}" includes="**/goldenGateServer/utilities/GoldenGateServerWatchdog.java"/>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="slaveutilsjar">
+		<delete file="${jar.slaveutils}" />
+		<jar destfile="${jar.slaveutils}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/util/masterSlave/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/util/masterSlave/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="httpsjar">
+		<delete file="${jar.https}" />
+		<jar destfile="${jar.https}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/https/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/https/*.java" />
+			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>
 	</target>
@@ -184,6 +230,19 @@
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/ups/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="dtajar">
+		<delete file="${jar.dta}" />
+		<jar destfile="${jar.dta}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/dta/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/dta/*.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>

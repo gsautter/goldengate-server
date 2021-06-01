@@ -1,6 +1,6 @@
 // database access settings (configured to use Apache Derby in embedded mode, see examples below for other database servers)
 EasyIO.JDBC.DriverClassName = "org.apache.derby.jdbc.EmbeddedDriver";
-EasyIO.JDBC.DriverClassPath = ".derby.jar";
+EasyIO.JDBC.DriverClassPath = "./derby.jar";
 EasyIO.JDBC.TerminalSemicolon = "NO";
 EasyIO.JDBC.Url = "jdbc:derby:DerbyDB/GgServerDB;create=true";
 

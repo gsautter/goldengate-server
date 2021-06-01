@@ -27,6 +27,9 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.util;
 
+import java.util.Map;
+
+import de.uka.ipd.idaho.easyIO.util.JsonParser;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
 
 /**
@@ -76,6 +79,10 @@ public interface DataObjectUpdateConstants extends GoldenGateServerConstants {
 		 * @author sautter
 		 */
 		public static abstract class DataObjectEventListener extends GoldenGateServerEventListener {
+			static {
+				//	register factory for event instances soon as first listener created
+				registerFactory();
+			}
 			
 			/* (non-Javadoc)
 			 * @see de.uka.ipd.idaho.goldenGateServer.events.GoldenGateServerEventListener#notify(de.uka.ipd.idaho.goldenGateServer.events.GoldenGateServerEvent)
@@ -150,7 +157,7 @@ public interface DataObjectUpdateConstants extends GoldenGateServerConstants {
 		 *            event is being processed in listeners
 		 */
 		public DataObjectEvent(String user, String dataId, int version, int type, String sourceClassName, long eventTime, EventLogger logger) {
-			super(type, sourceClassName, eventTime, (dataId + "-" + eventTime), logger);
+			super(type, sourceClassName, eventTime, (dataId + "-" + type + "-" + eventTime), logger);
 			this.user = user;
 			this.dataId = dataId;
 			this.version = version;
@@ -161,6 +168,45 @@ public interface DataObjectUpdateConstants extends GoldenGateServerConstants {
 		 */
 		public String getParameterString() {
 			return (super.getParameterString() + " " + this.user + " " + this.dataId + " " + this.version);
+		}
+		
+		/* (non-Javadoc)
+		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants.GoldenGateServerEvent#toJsonObject()
+		 */
+		public Map toJsonObject() {
+			Map json = super.toJsonObject();
+			json.put("eventClass", DataObjectEvent.class.getName());
+			json.put("user", this.user);
+			json.put("dataId", this.dataId);
+			json.put("dataVersion", new Integer(this.version));
+			return json;
+		}
+		
+		private static EventFactory factory = new EventFactory() {
+			public GoldenGateServerEvent getEvent(Map json) {
+				if (!DataObjectEvent.class.getName().equals(json.get("eventClass")))
+					return null;
+				Number eventType = JsonParser.getNumber(json, "eventType");
+				String sourceClassName = JsonParser.getString(json, "sourceClass");
+				Number eventTime = JsonParser.getNumber(json, "eventTime");
+//				String eventId = JsonParser.getString(json, "eventId");
+//				boolean isHighPriority = (JsonParser.getBoolean(json, "highPriority") != null);
+				
+				String user = JsonParser.getString(json, "user");
+				String dataId = JsonParser.getString(json, "dataId");
+				Number dataVersion = JsonParser.getNumber(json, "dataVersion");
+				return new DataObjectEvent(user, dataId, dataVersion.intValue(), eventType.intValue(), sourceClassName, eventTime.longValue(), null);
+			}
+			public GoldenGateServerEvent getEvent(String className, String paramString) {
+				return null; // this is up to sub classes
+			}
+		};
+		static void registerFactory() {
+			addFactory(factory);
+		}
+		static {
+			//	register factory for event instances soon as first instance created
+			registerFactory();
 		}
 	}
 }

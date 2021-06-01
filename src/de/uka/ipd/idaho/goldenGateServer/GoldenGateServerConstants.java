@@ -28,8 +28,13 @@
 package de.uka.ipd.idaho.goldenGateServer;
 
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Modifier;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Map;
 
 
 
@@ -53,23 +58,138 @@ public interface GoldenGateServerConstants {
 	 * @author sautter
 	 */
 	public class GoldenGateServerEvent {
+		/*
+TODO Use same approach in distributed GG Server (with direct network connections):
+- pull generic server events via long polls ...
+- ... de-serializing them via same mechanism ...
+- ... and maybe sending list of relevant class names ...
+- ... on each poll or periodically
+==> merely cuts out persisting, wrapping, and periodic poll
+==> implement in GgREC (Remote Event Connector) or GgREF (Remote Event Fetcher)
+  ==> REC better fit, as both pulling and serving
+- hold on to last 10 minutes or so of events ...
+- ... as well as what requester they already went to
+  ==> allows after-fact notification of checkouts, releases, etc. across instance reboots
+- also hold on to last 10 minutes or so of received events
+  ==> helps prevent duplicate notifications
+
+TODO Distributed document checkout:
+- set checkout user on remote checkout ...
+- ... and release document on remote release
+  ==> above buffering should effectively prevent double checkout ...
+  ==> ... unless we have a split-brain situation ...
+  ==> ... and extremely bad luck
+  ==> still, local versioning should facilitate recovery ...
+  ==> ... especially with emerging markup merging functionality
+		 */
 		
 		/**
-		 * Generic listener for GoldenGATE Server Events. All listeners for more
-		 * specific events should extend this class and implement the notify() method
-		 * to dispatch events to their more specific methods.
+		 * Generic listener for GoldenGATE Server Events. All listeners for
+		 * more specific events should extend this class and implement the
+		 * <code>notify()</code> method to dispatch events to their more
+		 * specific methods.
 		 * 
 		 * @author sautter
 		 */
 		public static abstract class GoldenGateServerEventListener {
 			
 			/**
-			 * Notify the listener of a generic GoldenGATE Server Event. Listeners for
-			 * more specific events should implement this method to dispatch events to
-			 * their more methods.
+			 * Notify the listener of a generic GoldenGATE Server Event.
+			 * Listeners for more specific events should implement this
+			 * method to dispatch events to their more specific methods.
 			 * @param gse the event to issue the notification for
 			 */
 			public abstract void notify(GoldenGateServerEvent gse);
+		}
+		
+		/**
+		 * Factory object for reconstructing event instances from their JSON
+		 * and parameter string representations.
+		 * 
+		 * @author sautter
+		 */
+		protected static interface EventFactory {
+			
+			/**
+			 * Reconstruct an event from its JSON representation. If the
+			 * argument JSON object does not provide all the required data,
+			 * implementations of this method should return null.
+			 * @param json the JSON representation of the event
+			 * @return the event
+			 */
+			public abstract GoldenGateServerEvent getEvent(Map json);
+			
+			/**
+			 * Reconstruct an event from its parameter string representation.
+			 * If the argument string does not provide all the required data,
+			 * implementations of this method should return null.
+			 * @param className the name of the event class.
+			 * @param paramString the parameter string representation of the
+			 *        event
+			 * @return the event
+			 * @deprecated code for handling legacy data, use JSON
+			 */
+			public abstract GoldenGateServerEvent getEvent(String className, String paramString);
+		}
+		
+		/**
+		 * Reconstruct an event from its JSON representation. This method
+		 * is a centralized access point to all the registered
+		 * <code>EventFactory</code> instances responsible for reconstructing
+		 * instances of specific sub classes. If no factory is present for
+		 * the event class specified in the data, this method returns null.
+		 * @param json the JSON representation of the event
+		 * @return the event
+		 */
+		public static GoldenGateServerEvent getEvent(Map json) {
+			for (Iterator fit = factories.iterator(); fit.hasNext();) {
+				EventFactory factory = ((EventFactory) fit.next());
+				GoldenGateServerEvent gse = factory.getEvent(json);
+				if (gse != null)
+					return gse;
+			}
+			//	TODO reconstruct generically ???
+			return null;
+		}
+		
+		/**
+		 * Reconstruct an event from its parameter string representation. This
+		 * method is a centralized access point to all the registered
+		 * <code>EventFactory</code> instances responsible for reconstructing
+		 * instances of specific sub classes. If no factory is present for
+		 * the argument event class name, this method returns null.
+		 * @param className the name of the event class.
+		 * @param paramString the parameter string representation of the
+		 *        event
+		 * @return the event
+		 * @deprecated code for handling legacy data, use JSON
+		 */
+		public static GoldenGateServerEvent getEvent(String className, String paramString) {
+			for (Iterator fit = factories.iterator(); fit.hasNext();) {
+				EventFactory factory = ((EventFactory) fit.next());
+				GoldenGateServerEvent gse = factory.getEvent(className, paramString);
+				if (gse != null)
+					return gse;
+			}
+			//	TODO reconstruct generically ???
+			return null;
+		}
+		
+		private static LinkedHashSet factories = new LinkedHashSet();
+		
+		/**
+		 * Add a factory for reconstructing serialized instances of specific
+		 * sub classes. Sub classes providing a serialized representation of
+		 * their instances via the <code>toJsonObject</code> method should
+		 * register a corresponding factory on loading, best from a static
+		 * initializer.
+		 * @param factory the factory to register
+		 */
+		protected static void addFactory(EventFactory factory) {
+			if (factory == null)
+				return;
+			if (factories.add(factory))
+				System.out.println("GoldenGateServerEvent: got factory " + factory.getClass().getName());
 		}
 		
 		/**
@@ -77,11 +197,11 @@ public interface GoldenGateServerConstants {
 		 * 
 		 * @author sautter
 		 */
-		public interface EventLogger {
+		public static interface EventLogger {
 			
 			/**
-			 * Write a log entry providing detail information on actions taken in
-			 * reaction to an event.
+			 * Write a log entry providing detail information on actions taken
+			 * in reaction to an event.
 			 * @param logEntry the log entry to write
 			 */
 			public abstract void writeLog(String logEntry);
@@ -102,9 +222,9 @@ public interface GoldenGateServerConstants {
 		public final long eventTime;
 		
 		/**
-		 * the ID of the event (defaults to a concatenation of source class name
-		 * and event time; consists of letters, digits, dashes and underscores
-		 * only, no whitespace in particular)
+		 * the ID of the event (defaults to a concatenation of source class
+		 * name and event time; consists of letters, digits, dashes and
+		 * underscores only, no whitespace in particular)
 		 */
 		public final String eventId;
 		
@@ -179,6 +299,10 @@ public interface GoldenGateServerConstants {
 		public void writeLog(String logEntry) {
 			if (this.log != null)
 				this.log.writeLog(logEntry);
+			//	TODO maybe retro-fit this to use activity logger ...
+			//	TODO ... abandoning local event logger altogether
+			//	==> no more anonymous event logger objects required ...
+			//	==> ... while offering full range of log levels
 		}
 		
 		/**
@@ -191,9 +315,53 @@ public interface GoldenGateServerConstants {
 		 * This implementation returns the type, source class name, event time,
 		 * and event ID, in this order.
 		 * @return a string representation of the event
+		 * @deprecated use <code>toJsonObject()</code> instead
 		 */
 		public String getParameterString() {
 			return (this.type + " " + this.sourceClassName + " " + this.eventTime + " " + this.eventId);
+			//	TODO also offer XML based IO ...
+			//	TODO ... using attribute names in line with JSON property names
+			//	==> yet more flexibility in API
+		}
+		
+		/**
+		 * Convert this event into a JSON object representation for easy
+		 * storage and transfer. Sub classes should overwrite this method
+		 * to add their specific parameters to the map. Sub classes that
+		 * include references to non-basic data types (primitive types and
+		 * strings) should at least include an ID for the referenced object
+		 * to facilitate later reconstruction via a factory. Further, sub
+		 * classes should replace the <code>eventClass</code> property with
+		 * their own class name to facilitate factory selection, as well as
+		 * register a factory for reconstructing event objects from their JSON
+		 * representation.<br>
+		 * This implementation returns a map containing the type, source class
+		 * name, event time, and event ID.
+		 * @return a JSON object representation of the event
+		 */
+		public Map toJsonObject() {
+			LinkedHashMap json = new LinkedHashMap();
+			Class eventClass = this.getClass();
+			while (eventClass != null) {
+				if (eventClass.getName().matches(".*\\$[0-9]+")) {} // anonymous sub class, move to parent
+				else if (Modifier.isAbstract(eventClass.getModifiers())) {} // abstract sub classes can exist
+				else if (Modifier.isInterface(eventClass.getModifiers())) {} // should not happen, but let's be safe
+				else if (!Modifier.isPublic(eventClass.getModifiers())) {} // private named sub classes can exist
+				else break; // we can use this one
+				if (GoldenGateServerEvent.class.isAssignableFrom(eventClass.getSuperclass()))
+					eventClass = eventClass.getSuperclass();
+				else eventClass = null; // WTF ... how did we get past GoldenGateServerEvent root class ???
+			}
+			if ((eventClass != null) && !eventClass.equals(this.getClass()))
+				System.out.println("GoldenGateServerEvent: mapped " + this.getClass().getName() + " to " + eventClass.getName());
+			json.put("eventClass", ((eventClass == null) ? GoldenGateServerEvent.class.getName() : eventClass.getName()));
+			json.put("eventType", new Integer(this.type));
+			json.put("sourceClass", this.sourceClassName);
+			json.put("eventTime", new Long(this.eventTime));
+			json.put("eventId", this.eventId);
+			if (this.isHighPriority)
+				json.put("highPriority", Boolean.TRUE);
+			return json;
 		}
 		
 		/**
@@ -221,10 +389,12 @@ public interface GoldenGateServerConstants {
 		 * @return the encoded parameter
 		 */
 		public static final String encodeParameter(String paramString) {
+			if (paramString == null)
+				return null;
 			try {
 				return URLEncoder.encode(paramString, ENCODING);
 			}
-			catch (UnsupportedEncodingException e) {
+			catch (UnsupportedEncodingException uee) {
 				return paramString;
 				// will never happen as UTF-8 is supported, but Java don't know ...
 			}
@@ -237,10 +407,12 @@ public interface GoldenGateServerConstants {
 		 * @return the decoded parameter
 		 */
 		public static final String decodeParameter(String paramString) {
+			if (paramString == null)
+				return null;
 			try {
 				return URLDecoder.decode(paramString, ENCODING);
 			}
-			catch (UnsupportedEncodingException e) {
+			catch (UnsupportedEncodingException uee) {
 				return paramString;
 				// will never happen as UTF-8 is supported, but Java don't know ...
 			}

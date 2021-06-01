@@ -530,18 +530,25 @@ public class IdentifierKeyedDataObjectStore {
 				sleep(10 * 1000);
 			}
 			catch (InterruptedException ie) {
-				logger.logInfo(this.parentName + ": re-scheduling of " + this.job.name + " canceled on shutdown");
+				if (this.job != null)
+					logger.logInfo(this.parentName + ": re-scheduling of " + this.job.name + " canceled on shutdown");
 				return;
 			}
 			
 			//	re-schedule job
-			scheduleMaintenanceJob(this.job);
-			logger.logInfo(this.parentName + ": " + this.job.name + " re-scheduled");
+			this.rescheduleMaintenanceJob();
 			
 			//	we're done
 			synchronized (maintenanceJobReschedulers) {
 				maintenanceJobReschedulers.remove(this);
 			}
+		}
+		synchronized void rescheduleMaintenanceJob() {
+			if (this.job == null)
+				return;
+			scheduleMaintenanceJob(this.job);
+			logger.logInfo(this.parentName + ": " + this.job.name + " re-scheduled");
+			this.job = null;
 		}
 	}
 	
@@ -570,13 +577,15 @@ public class IdentifierKeyedDataObjectStore {
 	private class FolderReorganization extends MaintenanceJob {
 		private String folderPath;
 		private File folder;
-		FolderReorganization(String folderPath, File folder) {
+		private boolean isContinuation;
+		FolderReorganization(String folderPath, File folder, boolean isContinuation) {
 			super("Reorganization of " + folderPath);
 			this.folderPath = folderPath;
 			this.folder = folder;
+			this.isContinuation = isContinuation;
 		}
 		public boolean doMaintenance() throws Exception {
-			return reorganizeFolder(this.folderPath, this.folder);
+			return reorganizeFolder(this.folderPath, this.folder, this.isContinuation);
 		}
 	}
 	
@@ -734,12 +743,15 @@ public class IdentifierKeyedDataObjectStore {
 		//	link up to monitoring
 		this.maintenanceQueueMonitor = new AsynchronousWorkQueue(this.name) {
 			public String getStatus() {
-				return (this.name + ": " + maintenanceQueue.size() + " maintenance jobs pending" + (IdentifierKeyedDataObjectStore.this.maintenanceWorker.wait ? "" : ", HURRYING"));
+				return (this.name + ": " + maintenanceQueue.size() + " maintenance jobs pending" + (IdentifierKeyedDataObjectStore.this.maintenanceWorker.wait ? "" : " (HURRYING)") + ", " + maintenanceJobReschedulers.size() + " ones deferred");
 			}
 		};
 		
 		//	create backup action
 		this.backupAction = new AsynchronousConsoleAction("backup", "Backup data object archive of this GoldenGATE IKS", "collection", null, null) {
+			protected String getActionName() {
+				return (IdentifierKeyedDataObjectStore.this.name + "." + super.getActionName());
+			}
 			protected void performAction(String[] arguments) throws Exception {
 				String backupName = ("Backup." + backupTimestamper.format(new Date()) + ".zip");
 				
@@ -898,6 +910,19 @@ public class IdentifierKeyedDataObjectStore {
 		this.maintenanceWorker = null;
 	}
 	
+	private void rescheduleMaintenanceJobs() {
+		ArrayList mjrs;
+		synchronized (this.maintenanceJobReschedulers) {
+			mjrs = new ArrayList(this.maintenanceJobReschedulers);
+			this.maintenanceJobReschedulers.clear();
+		}
+		for (int r = 0; r < mjrs.size(); r++) {
+			MaintenanceJobRescheduler mjr = ((MaintenanceJobRescheduler) mjrs.get(r));
+			mjr.rescheduleMaintenanceJob();
+			mjr.interrupt();
+		}
+	}
+	
 	private void scheduleMaintenanceJob(MaintenanceJob job) {
 		synchronized (this.maintenanceQueue) {
 			this.maintenanceQueue.addLast(job);
@@ -948,6 +973,7 @@ public class IdentifierKeyedDataObjectStore {
 	private static final String SHOW_REFERENCES_COMMAND = "showRefs";
 	private static final String CLEAR_REFERENCES_COMMAND = "clearRefs";
 	private static final String JOB_QUEUE_SIZE_COMMAND = "jobsPending";
+	private static final String RESCHEDULE_JOBS_COMMAND = "rescheduleJobs";
 	private static final String HURRY_JOBS_COMMAND = "hurryJobs";
 	private static final String DRAG_JOBS_COMMAND = "dragJobs";
 	
@@ -1152,6 +1178,26 @@ public class IdentifierKeyedDataObjectStore {
 		};
 		cal.add(ca);
 		
+		//	reschedule any deferred maintenance jobs right away
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return RESCHEDULE_JOBS_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						RESCHEDULE_JOBS_COMMAND,
+						"Re-schedule any deferred background maintenance jobs right away."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length == 0)
+					rescheduleMaintenanceJobs();
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+			}
+		};
+		cal.add(ca);
+		
 		//	refrain from waiting between two maintenance jobs
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
@@ -1259,7 +1305,7 @@ public class IdentifierKeyedDataObjectStore {
 			if (this.isPathFolder(folder, folderPath)) {
 				File[] files = folder.listFiles(new FileFilter() {
 					public boolean accept(File file) {
-						return (file.isDirectory() && (file.getName().matches("[0-9A-Fa-f]{2}")));
+						return (file.isDirectory() && file.getName().matches("[0-9A-Fa-f]{2}"));
 					}
 				});
 				folderList.addAll(Arrays.asList(files));
@@ -1280,16 +1326,23 @@ public class IdentifierKeyedDataObjectStore {
 			return; // this one has already been reorganized
 		File[] files = folder.listFiles(); // also include '<dataId>.zip.old' files
 		if (files.length > this.maxFolderObjects) {
-			this.scheduleMaintenanceJob(new FolderReorganization(folderPath, folder));
+			this.scheduleMaintenanceJob(new FolderReorganization(folderPath, folder, false));
 			this.logger.logInfo("Scheduled reorganization of folder " + folderPath + " (" + files.length + " files)");
+			return;
 		}
-		else this.logger.logInfo("Reorganization not required for folder " + folderPath + " (" + files.length + " files)");
+		for (int f = 0; f < files.length; f++)
+			if (files[f].isDirectory() && files[f].getName().matches("[0-9A-Fa-f]{2}")) {
+				this.scheduleMaintenanceJob(new FolderReorganization(folderPath, folder, true));
+				this.logger.logInfo("Scheduled finishing reorganization of folder " + folderPath + " (" + files.length + " files)");
+				return;
+			}
+		this.logger.logInfo("Reorganization not required for folder " + folderPath + " (" + files.length + " files)");
 	}
 	
-	private boolean reorganizeFolder(String folderPath, File folder) {
+	private boolean reorganizeFolder(String folderPath, File folder, boolean isContinuation) {
 		if (this.isPathFolder(folder, folderPath))
 			return true; // this one has already been reorganized
-		this.logger.logInfo(this.name + ": start reorganizing folder " + folderPath + " ...");
+		this.logger.logInfo(this.name + ": " + (this.isReorganizingFolderPath(folderPath) ? "continue" : "start") + " reorganizing folder " + folderPath + " ...");
 		
 		//	get and sort files
 		File[] files = folder.listFiles(new FileFilter() {
@@ -1314,7 +1367,9 @@ public class IdentifierKeyedDataObjectStore {
 				fileDataId = fileDataId.substring(0, fileDataId.indexOf('.'));
 			folderDataIDs.add(fileDataId);
 		}
-		if (folderDataIDs.size() < 2) {
+		if (this.isReorganizingFolderPath(folderPath) || isContinuation) // need to finish job if folder still marked as reorganizing
+			this.logger.logInfo(" - continuing reorganization, " + folderDataIDs.size() + " data objects left to handle");
+		else if (folderDataIDs.size() < 2) {
 			this.logger.logInfo(" - reorganization pointless, only one data object");
 			return true;
 		}
@@ -1350,7 +1405,7 @@ public class IdentifierKeyedDataObjectStore {
 				//	schedule reorganization for just-completed sub folder if too large
 				//	(unless we only have a single data ID inside, in which case another reorganization is pointless)
 				if (subFolderMoved && (subFolderDataIDs.size() > 1) && (subFolderFileCount > this.maxFolderObjects)) {
-					this.scheduleMaintenanceJob(new FolderReorganization((folderPath + ((folderPath.length() == 0) ? "" : "/") + subFolderName), subFolder));
+					this.scheduleMaintenanceJob(new FolderReorganization((folderPath + ((folderPath.length() == 0) ? "" : "/") + subFolderName), subFolder, false));
 					this.logger.logInfo(" - scheduled reorganization of folder " + folderPath + ((folderPath.length() == 0) ? "" : "/") + subFolderName + " (" + subFolderFileCount + " files)");
 				}
 				
@@ -1387,7 +1442,7 @@ public class IdentifierKeyedDataObjectStore {
 		//	schedule reorganization for last completed sub folder if too large
 		//	(unless we only have a single data ID inside, in which case another reorganization is pointless)
 		if (subFolderMoved && (subFolderDataIDs.size() > 1) && (subFolderFileCount > this.maxFolderObjects)) {
-			this.scheduleMaintenanceJob(new FolderReorganization((folderPath + "/" + subFolderName), subFolder));
+			this.scheduleMaintenanceJob(new FolderReorganization((folderPath + "/" + subFolderName), subFolder, false));
 			this.logger.logInfo(" - scheduled reorganization of folder " + folderPath + "/" + subFolderName + " (" + subFolderFileCount + " files)");
 		}
 		
@@ -1512,8 +1567,8 @@ public class IdentifierKeyedDataObjectStore {
 	private boolean isPathFolder(File folder, String folderPath) {
 		if (this.pathFolderPaths.contains(folderPath))
 			return true;
-		if (folderPath.length() < ((this.minFolderDepth * 3) - "/".length())) // two characters plus one slash per path step, less leading slash
-			return true; // TODO remove this after retro-fitting existing (DST and IMS) repos with '.pathFolder' markers 
+//		if (folderPath.length() < ((this.minFolderDepth * 3) - "/".length())) // two characters plus one slash per path step, less leading slash
+//			return true; // TODOne remove this after retro-fitting existing (DST and IMS) repos with '.pathFolder' markers 
 		File pathFolderMarker = new File(folder, PATH_FOLDER_MARKER_FILE_NAME);
 		if (pathFolderMarker.exists()) {
 			this.pathFolderPaths.add(folderPath);
@@ -1545,6 +1600,9 @@ public class IdentifierKeyedDataObjectStore {
 	}
 	
 	private File getDataFile(String dataId, int version) {
+		return this.getDataFile(dataId, version, 1);
+	}
+	private File getDataFile(String dataId, int version, int attempt) {
 		File dataFolder = this.rootFolder;
 		String folderPath = "";
 		String dataFileName = (dataId + ((version == 0) ? "" : ("." + version)) + this.dataFileExtension);
@@ -1561,10 +1619,12 @@ public class IdentifierKeyedDataObjectStore {
 			
 			//	parent folder in reorganization, wait and recurse (maintenance should be fast, and a rare event (at most once per folder))
 			if (this.isReorganizingFolderPath(folderPath)) {
+				if (attempt > 20)
+					throw new IllegalStateException("Folder '" + folderPath + "' is reorganizing");
 				try {
-					Thread.sleep(1 * 1000);
+					Thread.sleep((attempt) * 1000);
 				} catch (InterruptedException ie) {}
-				return this.getDataFile(dataId, version);
+				return this.getDataFile(dataId, version, (attempt + 1));
 			}
 			
 			//	check zipped previous version in file mode
@@ -1971,6 +2031,7 @@ public class IdentifierKeyedDataObjectStore {
 			}
 			
 			//	get files belonging to the data object
+			//	TODO also handle sub folders (might become relevant at some point ...)
 			File[] dataFiles = dataFolder.listFiles();
 			
 			//	completely wipe data object

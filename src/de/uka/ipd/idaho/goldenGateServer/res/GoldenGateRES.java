@@ -33,14 +33,18 @@ import java.io.File;
 import java.io.FileFilter;
 import java.io.IOException;
 import java.io.Reader;
+import java.io.StringReader;
 import java.io.Writer;
+import java.lang.reflect.Modifier;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 
@@ -49,6 +53,8 @@ import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
+import de.uka.ipd.idaho.easyIO.util.JsonParser;
+import de.uka.ipd.idaho.easyIO.utilities.ApplicationHttpsEnabler;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
 import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger;
@@ -108,10 +114,10 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		 * @author sautter
 		 */
 		public static abstract class ResRemoteEventListener extends GoldenGateServerEventListener {
-			
-			/* (non-Javadoc)
-			 * @see de.uka.ipd.idaho.goldenGateServer.events.GoldenGateServerEventListener#notify(de.uka.ipd.idaho.goldenGateServer.events.GoldenGateServerEvent)
-			 */
+			static {
+				//	register factory for event instances soon as first listener created
+				registerFactory();
+			}
 			public void notify(GoldenGateServerEvent gse) {
 				if (gse instanceof ResRemoteEvent)
 					this.notify((ResRemoteEvent) gse);
@@ -129,11 +135,16 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		/** the domain name of the GoldenGATE RES where the wrapped event originally occurred */
 		public final String originDomainName;
 		
-		/** the class name of the actual event wrapped in the remote event */
+		/** the class name of the actual event wrapped in the remote event
+		 * @deprecated use event proper */
 		public final String eventClassName;
 		
-		/** the parameter string containing the data of the wrapped event */
+		/** the parameter string containing the data of the wrapped event
+		 * @deprecated use event proper */
 		public final String paramString;
+		
+		/** the JSON representation of the wrapped event  */
+		public final Map eventData;
 		
 		/** the name / alias of the GoldenGATE RES the event was fetched from (used only for notification, otherwise null) */
 		public final String sourceDomainAlias;
@@ -156,12 +167,39 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		 *            the remote event
 		 * @param paramString the parameter string containing the data of the
 		 *            wrapped event
+		 * @deprecated use constructor with JSON object map instead
 		 */
 		public ResRemoteEvent(int type, String sourceClassName, long eventTime, String eventId, String sourceDomainName, String eventClassName, String paramString) {
 			super(type, sourceClassName, eventTime, eventId, null);
 			this.originDomainName = sourceDomainName;
 			this.eventClassName = eventClassName;
 			this.paramString = paramString;
+			this.eventData = null;
+//			this.event = GoldenGateServerEvent.getEvent(eventClassName, paramString);
+			this.sourceDomainAlias = null;
+			this.sourceDomainAddress = null;
+			this.sourceDomainPort = -1;
+		}
+		
+		/**
+		 * Constructor
+		 * @param type
+		 * @param sourceClassName
+		 * @param eventTime
+		 * @param eventId
+		 * @param sourceDomainName the domain name of the GoldenGATE RES where
+		 *            the wrapped event originally occurred
+		 * @param eventClassName the class name of the actual event wrapped in
+		 *            the remote event
+		 * @param paramString the parameter string containing the data of the
+		 *            wrapped event
+		 */
+		public ResRemoteEvent(int type, String sourceClassName, long eventTime, String eventId, String sourceDomainName, Map eventData) {
+			super(type, sourceClassName, eventTime, eventId, null);
+			this.originDomainName = sourceDomainName;
+			this.eventClassName = null;
+			this.paramString = null;
+			this.eventData = Collections.unmodifiableMap(eventData);
 			this.sourceDomainAlias = null;
 			this.sourceDomainAddress = null;
 			this.sourceDomainPort = -1;
@@ -178,6 +216,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			this.originDomainName = sourceDomainName;
 			this.eventClassName = ((event instanceof ResRemoteEvent) ? ((ResRemoteEvent) event).eventClassName : event.getClass().getName());
 			this.paramString = ((event instanceof ResRemoteEvent) ? ((ResRemoteEvent) event).paramString : event.getParameterString());
+			this.eventData = ((event instanceof ResRemoteEvent) ? ((ResRemoteEvent) event).eventData : Collections.unmodifiableMap(event.toJsonObject()));
 			this.sourceDomainAlias = null;
 			this.sourceDomainAddress = null;
 			this.sourceDomainPort = -1;
@@ -201,11 +240,110 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			super(event.type, event.sourceClassName, event.eventTime, event.eventId, null);
 			this.eventClassName = event.eventClassName;
 			this.paramString = event.paramString;
+			this.eventData = event.eventData;
 			this.originDomainName = event.originDomainName;
 			this.sourceDomainAlias = sourceDomainAlias;
 			this.sourceDomainAddress = sourceDomainAddress;
 			this.sourceDomainPort = sourceDomainPort;
 		}
+		
+		/**
+		 * Retrieve the wrapped event.
+		 * @return the wrapped event
+		 */
+		public GoldenGateServerEvent getEvent() {
+//			if (this.eventData != null)
+//				return GoldenGateServerEvent.getEvent(this.eventData);
+//			else if ((this.eventClassName != null) && (this.paramString != null))
+//				return GoldenGateServerEvent.getEvent(this.eventClassName, this.paramString);
+//			else return null;
+			//	TODO remove this bloody hack soon as data cleaned up !!!
+			GoldenGateServerEvent gse = this.doGetEvent();
+			if (gse != null)
+				return gse;
+			String eventClassName = ((this.eventData == null) ? this.eventClassName : ((String) this.eventData.get("eventClass")));
+			if (eventClassName == null)
+				return null; // no dice
+			
+			System.out.println("Trying to find event class " + eventClassName);
+			Class eventClass;
+			try {
+				eventClass = Class.forName(eventClassName);
+				System.out.println(" ==> event class loaded");
+			}
+			catch (Throwable t) {
+				t.printStackTrace(System.out);
+				eventClass = null;
+			}
+//			if (eventClass == null) try {
+//				eventClass = this.getPublicEventClass(eventClassName);
+//				System.out.println(" ==> event class retrieved");
+//			}
+//			catch (Throwable t) {
+//				t.printStackTrace(System.out);
+//				return null;
+//			}
+			
+			try {
+				eventClass.newInstance(); // even if this throws anything, class is initialized after this call
+			}
+			catch (Throwable t) {
+				t.printStackTrace(System.out);
+			}
+			System.out.println(" ==> event class initialized");
+			
+			Class useEventClass = eventClass;
+			while (useEventClass != null) {
+				if (useEventClass.getName().matches(".*\\$[0-9]+")) {} // anonymous sub class, move to parent
+				else if (Modifier.isAbstract(useEventClass.getModifiers())) {} // abstract sub classes can exist
+				else if (Modifier.isInterface(useEventClass.getModifiers())) {} // should not happen, but let's be safe
+				else if (!Modifier.isPublic(useEventClass.getModifiers())) {} // private named sub classes can exist
+				else break; // we can use this one
+				System.out.println(" ==> checking parent class " + useEventClass.getSuperclass().getName());
+				if (GoldenGateServerEvent.class.isAssignableFrom(useEventClass.getSuperclass()))
+					useEventClass = useEventClass.getSuperclass();
+				else useEventClass = null; // WTF ... how did we get past GoldenGateServerEvent root class ???
+			}
+//			if (useEventClass == null) try {
+//				useEventClass = getPublicEventClass(eventClassName);
+//			}
+//			catch (Throwable t) {
+//				t.printStackTrace(System.out);
+//				return null;
+//			}
+			if (useEventClass == null)
+				return null;
+			System.out.println(" ==> public event class is " + useEventClass.getName());
+			
+			if (this.paramString != null)
+				return GoldenGateServerEvent.getEvent(useEventClass.getName(), this.paramString);
+			if (this.eventData != null) {
+				Map eventData = new LinkedHashMap(this.eventData);
+				eventData.put("eventClass", useEventClass.getName());
+				return GoldenGateServerEvent.getEvent(eventData);
+			}
+			return null; // nothing helped
+		}
+		private GoldenGateServerEvent doGetEvent() {
+			//	TODO remove this bloody hack soon as data cleaned up !!!
+			if (this.eventData != null)
+				return GoldenGateServerEvent.getEvent(this.eventData);
+			else if ((this.eventClassName != null) && (this.paramString != null))
+				return GoldenGateServerEvent.getEvent(this.eventClassName, this.paramString);
+			else return null;
+		}
+//		private Class getPublicEventClass(String eventClassName) throws Throwable {
+//			//	TODO remove this bloody hack soon as data cleaned up !!!
+//			if (eventClassName.matches(".*\\.GoldenGateIMS(\\$[0-9]+)+"))
+//				return Class.forName("de.uka.ipd.idaho.goldenGateServer.ims.GoldenGateImsConstants$ImsDocumentEvent");
+//			if (eventClassName.matches(".*\\.GoldenGateDIO(\\$[0-9]+)+"))
+//				return Class.forName("de.uka.ipd.idaho.goldenGateServer.dio.GoldenGateDioConstants$DioDocumentEvent");
+//			if (eventClassName.matches(".*\\.GoldenGateSRS(\\$[0-9]+)+"))
+//				return Class.forName("de.uka.ipd.idaho.goldenGateServer.srs.GoldenGateSrsConstants$SrsDocumentEvent");
+//			if (eventClassName.matches(".*DataObjectTransitCheckpoint\\$DataObjectTransitEvent"))
+//				return Class.forName("de.uka.ipd.idaho.goldenGateServer.dta.DataObjectTransitAuthority$DataObjectTransitEvent");
+//			return null;
+//		}
 		
 		/* (non-Javadoc)
 		 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants.GoldenGateServerEvent#getParameterString()
@@ -214,15 +352,69 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			return (super.getParameterString() + " " + this.originDomainName + " " + this.eventClassName + " " + encodeParameter(this.paramString));
 		}
 		
+		public Map toJsonObject() {
+			Map json = super.toJsonObject();
+			json.put("eventClass", ResRemoteEvent.class.getName());
+			json.put("sourceDomain", this.originDomainName);
+			if (this.eventData == null) {
+				GoldenGateServerEvent gse = this.getEvent();
+				json.put("eventData", gse.toJsonObject());
+			}
+			else json.put("eventData", this.eventData);
+			return json;
+		}
+		
+		private static final EventFactory factory = new EventFactory() {
+			public GoldenGateServerEvent getEvent(Map json) {
+//				if (!ResRemoteEvent.class.getName().equals(json.get("eventClass")))
+//					return null;
+//				Number eventType = JsonParser.getNumber(json, "eventType");
+//				String sourceClassName = JsonParser.getString(json, "sourceClass");
+//				Number eventTime = JsonParser.getNumber(json, "eventTime");
+//				String eventId = JsonParser.getString(json, "eventId");
+////				boolean isHighPriority = (JsonParser.getBoolean(json, "highPriority") != null);
+//				
+//				String sourceDomainName = JsonParser.getString(json, "sourceDomain");
+//				Map eventData = JsonParser.getObject(json, "eventData");
+//				return new ResRemoteEvent(eventType.intValue(), sourceClassName, eventTime.longValue(), eventId, sourceDomainName, eventData);
+				return toEvent(json);
+			}
+			public GoldenGateServerEvent getEvent(String className, String paramString) {
+				return (ResRemoteEvent.class.getName().equals(className) ? parseEvent(paramString) : null);
+			}
+		};
+		static void registerFactory() {
+			addFactory(factory);
+		}
+		static {
+			//	register factory for event instances soon as first instance created
+			registerFactory();
+		}
+		
 		/**
 		 * Parse a remote event from its string representation returned by the
 		 * getParameterString() method.
 		 * @param data the string to parse
 		 * @return a remote event created from the specified data
+		 * @deprecated use JSON based serialization
 		 */
 		public static ResRemoteEvent parseEvent(String data) {
 			String[] dataItems = data.split("\\s");
 			return new ResRemoteEvent(Integer.parseInt(dataItems[0]), dataItems[1], Long.parseLong(dataItems[2]), dataItems[3], dataItems[4], dataItems[5], decodeParameter(dataItems[6]));
+		}
+		
+		static ResRemoteEvent toEvent(Map json) {
+			if (!ResRemoteEvent.class.getName().equals(json.get("eventClass")))
+				return null;
+			Number eventType = JsonParser.getNumber(json, "eventType");
+			String sourceClassName = JsonParser.getString(json, "sourceClass");
+			Number eventTime = JsonParser.getNumber(json, "eventTime");
+			String eventId = JsonParser.getString(json, "eventId");
+//			boolean isHighPriority = (JsonParser.getBoolean(json, "highPriority") != null);
+			
+			String sourceDomainName = JsonParser.getString(json, "sourceDomain");
+			Map eventData = JsonParser.getObject(json, "eventData");
+			return new ResRemoteEvent(eventType.intValue(), sourceClassName, eventTime.longValue(), eventId, sourceDomainName, eventData);
 		}
 	}
 	
@@ -255,7 +447,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		public void writeData(Writer out) throws IOException {
 			BufferedWriter bw = ((out instanceof BufferedWriter) ? ((BufferedWriter) out) : new BufferedWriter(out));
 			while (this.hasNextEvent()) {
-				bw.write(this.getNextEvent().getParameterString());
+				ResRemoteEvent rre = this.getNextEvent();
+				bw.write(JsonParser.toString(rre.toJsonObject()));
 				bw.newLine();
 			}
 			if (bw != out)
@@ -276,14 +469,27 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			final BufferedReader finalBr = ((in instanceof BufferedReader) ? ((BufferedReader) in) : new BufferedReader(in));
 			return new RemoteEventList() {
 				private BufferedReader br = finalBr;
-				private String next = null;
+				private Map next = null;
 				public boolean hasNextEvent() {
-					if (this.next != null) return true;
-					else if (this.br == null) return false;
-					
+					if (this.next != null)
+						return true;
+					else if (this.br == null)
+						return false;
+					String next = null;
 					try {
-						this.next = this.br.readLine();
-					} catch (IOException ioe) {}
+						next = this.br.readLine();
+						if (next != null)
+							this.next = ((Map) JsonParser.parseJson(new StringReader(next)));
+					}
+					catch (IOException ioe) {
+						if (next == null)
+							System.out.println("Read error reading next data string: " + ioe.getMessage());
+						else {
+							System.out.println("Read error parsing next data string: " + ioe.getMessage());
+							System.out.println("  data string is " + next);
+						}
+						ioe.printStackTrace(System.out);
+					}
 					
 					if (this.next == null) {
 						try {
@@ -295,10 +501,11 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					else return true;
 				}
 				public ResRemoteEvent getNextEvent() {
-					if (!this.hasNextEvent()) return null;
-					String next = this.next;
+					if (!this.hasNextEvent())
+						return null;
+					Map next = this.next;
 					this.next = null;
-					return ResRemoteEvent.parseEvent(next);
+					return ResRemoteEvent.toEvent(next);
 				}
 			};
 		}
@@ -333,8 +540,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	
 	private String domainName;
 	
-	private DataUpdateThread dataUpdateService = null;
-	private AsynchronousWorkQueue dataUpdateMonitor = null;
+	private EventPersisterThread eventPersisterService = null;
+	private AsynchronousWorkQueue eventPersisterMonitor = null;
 	
 	private static final String EVENT_TABLE_NAME = "GgResData";
 	
@@ -359,12 +566,10 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		if (this.domainName == null)
 			throw new RuntimeException("GoldenGATE RES cannot work without a domain name.");
 		
-		
 		//	get and check database connection
 		this.io = this.host.getIoProvider();
 		if (!this.io.isJdbcAvailable())
 			throw new RuntimeException("GoldenGATE RES cannot work without database access.");
-		
 		
 		//	ensure event table
 		TableDefinition td = new TableDefinition(EVENT_TABLE_NAME);
@@ -386,19 +591,19 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		this.io.indexColumn(EVENT_TABLE_NAME, SOURCE_DOMAIN_NAME_ATTRIBUTE);
 		
 		//	start local data update service
-		synchronized (this.dataUpdateQueue) {
-			this.dataUpdateService = new DataUpdateThread();
-			this.dataUpdateService.start();
+		synchronized (this.persistEventQueue) {
+			this.eventPersisterService = new EventPersisterThread();
+			this.eventPersisterService.start();
 			try {
-				this.dataUpdateQueue.wait();
+				this.persistEventQueue.wait();
 			} catch (InterruptedException ie) {}
-			this.dataUpdateMonitor = new AsynchronousWorkQueue("ResDataUpdater") {
+			this.eventPersisterMonitor = new AsynchronousWorkQueue("ResEventPersister") {
 				public String getStatus() {
-					return (this.name + ": " + dataUpdateQueue.size() + " data updates pending");
+					return (this.name + ": " + persistEventQueue.size() + " events pending to persist");
 				}
 			};
 		}
-		System.out.println("  - local data update service started");
+		System.out.println("  - local event persister service started");
 		
 		//	start event publisher service
 		synchronized (this.eventIssuingQueue) {
@@ -457,6 +662,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	public void linkInit() {
 		GoldenGateServerEventService.addServerEventListener(new GoldenGateServerEventListener() {
 			public void notify(GoldenGateServerEvent gse) {
+//				System.out.println("GgRES: got event " + gse.toJsonObject());
 				publishEvent(gse);
 			}
 		});
@@ -477,9 +683,9 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	protected void exitComponent() {
 		System.out.println("GoldenGateRES: shutting down ...");
 		
-		this.dataUpdateMonitor.dispose();
-		this.dataUpdateService.shutdown();
-		System.out.println("  - data update service shut down");
+		this.eventPersisterMonitor.dispose();
+		this.eventPersisterService.shutdown();
+		System.out.println("  - event persister service shut down");
 		
 		this.eventFetcherService.shutdown();
 		System.out.println("  - event fetcher service shut down");
@@ -893,54 +1099,69 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	 * event queue are published automatically.
 	 * @param gse the event to publish
 	 */
-	public void publishEvent(final GoldenGateServerEvent gse) {
+	public void publishEvent(GoldenGateServerEvent gse) {
 		
 		//	check if original event was issued by local RES and circled back from other server
 		if ((gse instanceof ResRemoteEvent) && this.domainName.equals(((ResRemoteEvent) gse).originDomainName))
 			return;
 		
 		//	check who is publishing (drop events that are due to an event from a remote RES being issued locally)
-		if ((Thread.currentThread().getId() == eventIssuerService.getId()) && !(gse instanceof ResRemoteEvent))
+		if ((Thread.currentThread().getId() == this.eventIssuerService.getId()) && !(gse instanceof ResRemoteEvent))
 			return;
 		
 		//	check filters
-		for (int f = 0; f < eventFilters.size(); f++) {
+		for (int f = 0; f < this.eventFilters.size(); f++) {
 			if (!((ResEventFilter) this.eventFilters.get(f)).allowPublishEvent(gse))
 				return;
 		}
 		
-		//	enqueue data update
-		this.enqueueDataUpdate(new Runnable() {
-			public void run() {
-				storeEvent((gse instanceof ResRemoteEvent) ? ((ResRemoteEvent) gse) : new ResRemoteEvent(gse, domainName));
-			}
-		});
+		//	enqueue event for persisting
+		this.enqueuePersistEvent((gse instanceof ResRemoteEvent) ? ((ResRemoteEvent) gse) : new ResRemoteEvent(gse, this.domainName));
 	}
 	
-	private void storeEvent(final ResRemoteEvent rre) {
+	void storeEvent(ResRemoteEvent rre) {
+		String eventClassName = JsonParser.getString(rre.eventData, "eventClass");
 		
 		String existQuery = "SELECT " + EVENT_ID_ATTRIBUTE + 
 		" FROM " + EVENT_TABLE_NAME +
 		" WHERE " + EVENT_ID_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(rre.eventId) + "'" +
-			" AND " + EVENT_CLASS_NAME_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(rre.eventClassName) + "'" +
+			" AND " + EVENT_CLASS_NAME_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(eventClassName) + "'" +
 		";";
+//		this.logInfo("Checking event " + rre.toJsonObject());
+//		this.logInfo("Query is " + existQuery);
 		
 		SqlQueryResult sqr = null;
 		try {
 			sqr = this.io.executeSelectQuery(existQuery);
 			
 			//	we already know this event
-			if (sqr.next()) {}
+			if (sqr.next()) {
+//				this.logInfo(" ==> stored before");
+			}
 			
 			//	new event
 			else {
+				
+				//	copy data and prune properties we store explicitly
+				Map eventData = new LinkedHashMap(rre.eventData);
+				eventData.remove("eventClass");
+				String sourceClassName = JsonParser.getString(rre.eventData, "sourceClass");
+				eventData.remove("sourceClass");
+				Number eventTime = JsonParser.getNumber(rre.eventData, "eventTime");
+				eventData.remove("eventTime");
+				String eventId = JsonParser.getString(rre.eventData, "eventId");
+				eventData.remove("eventId");
+				Number eventType = JsonParser.getNumber(rre.eventData, "eventType");
+				eventData.remove("eventType");
 				
 				//	store data in collection main table
 				String insertQuery = "INSERT INTO " + EVENT_TABLE_NAME + 
 						" (" + EVENT_ID_ATTRIBUTE + ", " + EVENT_PUBLICATION_TIME_ATTRIBUTE + ", " + EVENT_TIME_ATTRIBUTE + ", " + EVENT_TYPE_ATTRIBUTE + ", " + SOURCE_CLASS_NAME_ATTRIBUTE + ", " + EVENT_CLASS_NAME_ATTRIBUTE + ", " + SOURCE_DOMAIN_NAME_ATTRIBUTE + ", " + PARAMETER_STRING_COLUMN_NAME + ")" +
 						" VALUES" +
-						" ('" + EasyIO.sqlEscape(rre.eventId) + "', " + System.currentTimeMillis() + ", " + rre.eventTime + ", " + rre.type + ", '" + EasyIO.sqlEscape(rre.sourceClassName) + "', '" + EasyIO.sqlEscape(rre.eventClassName) + "', '" + EasyIO.sqlEscape(rre.originDomainName) + "', '" + EasyIO.sqlEscape(rre.paramString) + "'" + ")" +
+						" ('" + EasyIO.sqlEscape(eventId) + "', " + System.currentTimeMillis() + ", " + eventTime.longValue() + ", " + eventType.intValue() + ", '" + EasyIO.sqlEscape(sourceClassName) + "', '" + EasyIO.sqlEscape(eventClassName) + "', '" + EasyIO.sqlEscape(rre.originDomainName) + "', '" + EasyIO.sqlEscape(JsonParser.toString(eventData)) + "'" + ")" +
 						";";
+//				this.logInfo(" ==> storing event");
+//				this.logInfo("Query is " + insertQuery);
 				try {
 					this.io.executeUpdateQuery(insertQuery);
 				}
@@ -965,39 +1186,40 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	 * 
 	 * @author sautter
 	 */
-	private class DataUpdateThread extends Thread {
+	private class EventPersisterThread extends Thread {
 		private boolean keepRunning = true;
+		EventPersisterThread() {
+			super("ResEventPersister");
+		}
 		public void run() {
 			
 			//	wake up creator thread
-			synchronized (dataUpdateQueue) {
-				dataUpdateQueue.notify();
+			synchronized (persistEventQueue) {
+				persistEventQueue.notify();
 			}
 			
 			//	run until shutdown() is called
 			while (this.keepRunning) {
 				
 				//	check if update waiting
-				Runnable dataUpdate;
-				synchronized (dataUpdateQueue) {
+				ResRemoteEvent re;
+				synchronized (persistEventQueue) {
 					
 					//	wait if no indexing actions pending
-					if (dataUpdateQueue.isEmpty()) {
-						try {
-							dataUpdateQueue.wait();
-						} catch (InterruptedException ie) {}
-					}
+					if (persistEventQueue.isEmpty()) try {
+						persistEventQueue.wait();
+					} catch (InterruptedException ie) {}
 					
 					//	woken up despite empty queue ==> shutdown
-					if (dataUpdateQueue.isEmpty())
-						return;
+					if (persistEventQueue.isEmpty())
+						continue;
 					
 					//	get update
-					else dataUpdate = ((Runnable) dataUpdateQueue.removeFirst());
+					else re = ((ResRemoteEvent) persistEventQueue.removeFirst());
 				}
 				
 				//	execute index action
-				this.doDataUpdate(dataUpdate);
+				this.persistEvent(re);
 				
 				//	give a little time to the others
 				if (this.keepRunning) try {
@@ -1006,24 +1228,22 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			}
 			
 			//	work off remaining updates
-			while (dataUpdateQueue.size() != 0)
-				this.doDataUpdate(((Runnable) dataUpdateQueue.removeFirst()));
+			while (persistEventQueue.size() != 0)
+				this.persistEvent(((ResRemoteEvent) persistEventQueue.removeFirst()));
 		}
-		
-		private void doDataUpdate(Runnable dataUpdate) {
+		private void persistEvent(ResRemoteEvent re) {
 			try {
-				dataUpdate.run();
+				storeEvent(re);
 			}
 			catch (Throwable t) {
 				logError("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
 				logError(t);
 			}
 		}
-		
 		void shutdown() {
-			synchronized (dataUpdateQueue) {
+			synchronized (persistEventQueue) {
 				this.keepRunning = false;
-				dataUpdateQueue.notify();
+				persistEventQueue.notify();
 			}
 			try {
 				this.join();
@@ -1031,12 +1251,11 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		}
 	}
 	
-	private LinkedList dataUpdateQueue = new LinkedList();
-	
-	private void enqueueDataUpdate(Runnable dataUpdate) {
-		synchronized (this.dataUpdateQueue) {
-			this.dataUpdateQueue.addLast(dataUpdate);
-			this.dataUpdateQueue.notify();
+	private LinkedList persistEventQueue = new LinkedList();
+	private void enqueuePersistEvent(ResRemoteEvent event) {
+		synchronized (this.persistEventQueue) {
+			this.persistEventQueue.addLast(event);
+			this.persistEventQueue.notify();
 		}
 	}
 	
@@ -1064,6 +1283,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			query.append(" AND " + SOURCE_CLASS_NAME_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(sourceClassName) + "'");
 		query.append(" ORDER BY " + EVENT_TIME_ATTRIBUTE);
 		query.append(";");
+//		logInfo("Query is " + query);
 		
 		SqlQueryResult sqr = null;
 		try {
@@ -1073,8 +1293,10 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				SqlQueryResult sqr = finalSqr;
 				ResRemoteEvent next = null;
 				public boolean hasNextEvent() {
-					if (this.next != null) return true;
-					else if (this.sqr == null) return false;
+					if (this.next != null)
+						return true;
+					else if (this.sqr == null)
+						return false;
 					else if (this.sqr.next()) {
 						String eventId = this.sqr.getString(0);
 						long eventTime = Long.parseLong(this.sqr.getString(1));
@@ -1083,8 +1305,31 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 						String eventClassName = this.sqr.getString(4);
 						String sourceDomainName = this.sqr.getString(5);
 						String paramString = this.sqr.getString(6);
-						this.next = new ResRemoteEvent(eventType, sourceClassName, eventTime, eventId, sourceDomainName, eventClassName, paramString);
-						return true;
+//						logInfo("Read event with data " + eventType + " " + sourceClassName + " " + eventTime + " " + eventId + eventClassName + " " + paramString);
+//						this.next = new ResRemoteEvent(eventType, sourceClassName, eventTime, eventId, sourceDomainName, eventClassName, paramString);
+						if (paramString.startsWith("{")) {
+							try {
+								Map eventData = ((Map) JsonParser.parseJson(new StringReader(paramString)));
+								eventData.put("eventClass", eventClassName);
+								eventData.put("sourceClass", sourceClassName);
+								eventData.put("eventTime", new Long(eventTime));
+								eventData.put("eventId", eventId);
+								eventData.put("eventType", new Integer(eventType));
+//								logInfo(" ==> " + JsonParser.toString(eventData));
+								this.next = new ResRemoteEvent(eventType, sourceClassName, eventTime, eventId, sourceDomainName, eventData);
+								return true;
+							}
+							catch (Exception e) {
+								logError("GoldenGateRES: failed to parse JSON event parameters: " + e.getMessage());
+								logError("  JSON was " + paramString);
+								return this.hasNextEvent();
+							}
+						}
+						else {
+//							logInfo(" ==> plain data");
+							this.next = new ResRemoteEvent(eventType, sourceClassName, eventTime, eventId, sourceDomainName, eventClassName, paramString);
+							return true;
+						}
 					}
 					else {
 						this.sqr.close();
@@ -1093,7 +1338,8 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					}
 				}
 				public ResRemoteEvent getNextEvent() {
-					if (!this.hasNextEvent()) return null;
+					if (!this.hasNextEvent())
+						return null;
 					ResRemoteEvent next = this.next;
 					this.next = null;
 					return next;
@@ -1104,10 +1350,6 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			this.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while listing events.");
 			this.logError("  query was " + query);
 			throw new IOException(sqle.getMessage());
-		}
-		finally {
-			if (sqr != null)
-				sqr.close();
 		}
 	}
 	
@@ -1271,6 +1513,9 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	 */
 	private class EventIssuerThread extends Thread {
 		private boolean keepRunning = true;
+		EventIssuerThread() {
+			super("ResRemoteEventIssuer");
+		}
 		public void run() {
 			
 			//	wake up creator thread
@@ -1282,25 +1527,24 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			while (this.keepRunning) {
 				
 				//	check if update waiting
-				Runnable update;
+				EventIssuing ei;
 				synchronized (eventIssuingQueue) {
 					
 					//	wait if no indexing actions pending
-					if (eventIssuingQueue.isEmpty()) {
-						try {
-							eventIssuingQueue.wait();
-						} catch (InterruptedException ie) {}
-					}
+					if (eventIssuingQueue.isEmpty()) try {
+						eventIssuingQueue.wait();
+					} catch (InterruptedException ie) {}
 					
 					//	woken up despite empty queue ==> shutdown
-					if (eventIssuingQueue.isEmpty()) return;
+					if (eventIssuingQueue.isEmpty())
+						continue;
 					
 					//	get update
-					else update = ((Runnable) eventIssuingQueue.removeFirst());
+					else ei = ((EventIssuing) eventIssuingQueue.removeFirst());
 				}
 				
 				//	execute update action
-				this.doUpdate(update);
+				this.issueEvent(ei);
 				
 				//	give a little time to the others
 				if (this.keepRunning) try {
@@ -1310,19 +1554,17 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			
 			//	work off remaining update actions
 			while (eventIssuingQueue.size() != 0)
-				this.doUpdate(((Runnable) eventIssuingQueue.removeFirst()));
+				this.issueEvent(((EventIssuing) eventIssuingQueue.removeFirst()));
 		}
-		
-		private void doUpdate(Runnable dataUpdate) {
+		private void issueEvent(EventIssuing ei) {
 			try {
-				dataUpdate.run();
+				doIssueEvent(ei.re, ei.res, ei.moreToCome, ei.log);
 			}
 			catch (Throwable t) {
-				logError("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
-				logError(t);
+				ei.log.logError("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
+				ei.log.logError(t);
 			}
 		}
-		
 		void shutdown() {
 			synchronized (eventIssuingQueue) {
 				this.keepRunning = false;
@@ -1334,8 +1576,20 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 		}
 	}
 	
+	private static class EventIssuing {
+		final ResRemoteEvent re;
+		final RemoteRES res;
+		final boolean moreToCome;
+		final GoldenGateServerActivityLogger log;
+		EventIssuing(ResRemoteEvent re, RemoteRES res, boolean moreToCome, GoldenGateServerActivityLogger log) {
+			this.re = re;
+			this.res = res;
+			this.moreToCome = moreToCome;
+			this.log = log;
+		}
+	}
 	private LinkedList eventIssuingQueue = new LinkedList();
-	private void enqueueEventIssuing(Runnable eventIssuing) {
+	private void enqueueEventIssuing(EventIssuing eventIssuing) {
 		synchronized (this.eventIssuingQueue) {
 			this.eventIssuingQueue.addLast(eventIssuing);
 			this.eventIssuingQueue.notify();
@@ -1351,6 +1605,9 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	 */
 	private class EventFetcherThread extends Thread {
 		private boolean keepRunning = true;
+		EventFetcherThread() {
+			super("ResRemoteEventFetcher");
+		}
 		public void run() {
 			
 			//	wake up creator thread
@@ -1366,6 +1623,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				long currentTime = System.currentTimeMillis();
 				
 				//	check if some RES to poll
+				//	TODO most likely use asynchronous data action handler (with remote domains as data IDs)
 				synchronized (remoteResFederators) {
 					
 					//	first, check when last tried to poll
@@ -1422,59 +1680,53 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			return (this.size() > 1024);
 		}
 	};
-	
-	private void issueEvent(final ResRemoteEvent re, final RemoteRES res, final boolean moreToCome, final GoldenGateServerActivityLogger log) {
+	private void issueEvent(ResRemoteEvent re, RemoteRES res, boolean moreToCome, GoldenGateServerActivityLogger log) {
 		
 		//	catch events that have circled back from the local domain
 		if (this.domainName.equals(re.originDomainName))
 			return;
 		
 		//	enqueue issuing event locally
-		this.enqueueEventIssuing(new Runnable() {
-			public void run() {
-				try {
-					
-					//	check cache (event might have already come in from other remote RES)
-					if (recentEvents.containsKey(re.eventId))
-						return;
-					
-					//	catch events already stored
-					String lookupQuery = "SELECT " + EVENT_ID_ATTRIBUTE + " FROM " + EVENT_TABLE_NAME + 
-							" WHERE " + EVENT_ID_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(re.eventId) + "'" +
-								" AND " + SOURCE_DOMAIN_NAME_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(re.originDomainName) + "'" + 
-							";";
-					SqlQueryResult sqr = null;
-					try {
-						sqr = io.executeSelectQuery(lookupQuery);
-						if (sqr.next()) {
-							recentEvents.put(re.eventId, "");
-							return;
-						}
-					}
-					catch (SQLException sqle) {
-						log.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while checking event history.");
-						log.logError("  query was " + lookupQuery);
-					}
-					finally {
-						if (sqr != null)
-							sqr.close();
-					}
-					
-					//	issue event (will automatically loop back to own database)
-					GoldenGateServerEventService.notify(re);
-					
-					//	store update timestamp on last event in series
-					if (!moreToCome)
-						storeRes(res);
-				}
-				catch (IOException ioe) {
-					log.logError("Error on update - " + ioe.getClass().getName() + " (" + ioe.getMessage() + ")");
-					log.logError(ioe);
-				}
-			}
-		});
+		this.enqueueEventIssuing(new EventIssuing(re, res, moreToCome, log));
 	}
 	
+	void doIssueEvent(ResRemoteEvent re, RemoteRES res, boolean moreToCome, GoldenGateServerActivityLogger log) throws IOException {
+		
+		//	check cache (event might have already come in from other remote RES)
+		if (this.recentEvents.containsKey(re.eventId))
+			return;
+		
+		//	catch events already stored
+		String lookupQuery = "SELECT " + EVENT_ID_ATTRIBUTE + " FROM " + EVENT_TABLE_NAME + 
+				" WHERE " + EVENT_ID_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(re.eventId) + "'" +
+					" AND " + SOURCE_DOMAIN_NAME_ATTRIBUTE + " LIKE '" + EasyIO.sqlEscape(re.originDomainName) + "'" + 
+				";";
+		SqlQueryResult sqr = null;
+		try {
+			sqr = io.executeSelectQuery(lookupQuery);
+			if (sqr.next()) {
+				recentEvents.put(re.eventId, "");
+				return;
+			}
+		}
+		catch (SQLException sqle) {
+			log.logError("GoldenGateRES: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while checking event history.");
+			log.logError("  query was " + lookupQuery);
+		}
+		finally {
+			if (sqr != null)
+				sqr.close();
+		}
+		
+		//	issue event (will automatically loop back to own database)
+		GoldenGateServerEventService.notify(re);
+		
+		//	store update timestamp on last event in series
+		if (!moreToCome)
+			storeRes(res);
+	}
+	
+	//	TODO put this in dedicated thread (to not block console for all too long ...)
 	private void diffEvents(RemoteRES res, ComponentActionConsole cac) throws IOException {
 		
 		//	collect local event IDs
@@ -1510,6 +1762,14 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 			//	remember we had this one
 			res.latestUpdate = Math.max(res.latestUpdate, re.eventTime);
 		}
+	}
+	
+	/**
+	 * Retrieve the name of the local RES domain this RES is publishing events under.
+	 * @return the local domain name
+	 */
+	public String getLocalDomainName() {
+		return this.domainName;
 	}
 	
 	/**
@@ -1563,5 +1823,16 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	public RemoteEventList getRemoteEventList(String remoteDomainAlias, long since, String sourceClassName) throws IOException {
 		RemoteRES res = ((RemoteRES) remoteResFederators.get(remoteDomainAlias));
 		return ((res == null) ? null : res.getRemoteEvents(since, sourceClassName));
+	}
+	
+	public static void main(String[] args) throws Exception {
+		ApplicationHttpsEnabler.enableHttps();
+		RemoteRES res = new RemoteRES("Frankfurt", "https://tb.plazi.org/GgServer/proxy", -1);
+		RemoteEventList rel = res.getRemoteEvents(1617985000000L, null);
+		while (rel.hasNextEvent()) {
+			ResRemoteEvent rre = rel.getNextEvent();
+			System.out.println(rre.getParameterString());
+			System.out.println(rre.toJsonObject());
+		}
 	}
 }

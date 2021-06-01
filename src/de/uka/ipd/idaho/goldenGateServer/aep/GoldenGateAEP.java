@@ -208,6 +208,21 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	}
 	
 	/**
+	 * Indicate the (approximate) percentage of event processing time spent on
+	 * waiting for external resources like remote APIs, on a scale of 0-100.
+	 * This percentage factors into the processing time dependent component of
+	 * the sleeping time after an event is processed. This default
+	 * implementation returns 0, indicating that all event processing time is
+	 * spent using local resources. Sub classes are welcome to overwrite it as
+	 * needed.
+	 * @return the percentage of event processing time spent on waiting for
+	 *            external resources
+	 */
+	protected int getExternalWaitPercentage() {
+		return 0;
+	}
+	
+	/**
 	 * This method establishes the database connection as well as the table for
 	 * persisting events. Sub classes overwriting this method thus have to make
 	 * the super call.
@@ -685,6 +700,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	 * of the latter. Actual listening for deletion events is up to sub classes.
 	 * @param dataId the ID of the data object that was deleted
 	 * @param user the user responsible for the deletion
+	 * @param params a bit vector bundling implementation specific event
+	 *            processing parameters
 	 * @return the position at which the deletion event is enqueued
 	 */
 	protected int dataDeleted(String dataId, String user, long params) {
@@ -709,6 +726,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	 * @param dataId the ID of the data object that was deleted
 	 * @param user the user responsible for the deletion
 	 * @param priority the priority of the deletion
+	 * @param params a bit vector bundling implementation specific event
+	 *            processing parameters
 	 * @return the position at which the deletion event is enqueued
 	 */
 	protected int dataDeleted(String dataId, String user, char priority, long params) {
@@ -1204,10 +1223,14 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 					continue;
 				
 				//	compute sleeping time, dependent on number of event processors and activity (time spent on actual event processing)
+				int externalWaitPercentage = getExternalWaitPercentage();
+				externalWaitPercentage = Math.max(externalWaitPercentage, 0);
+				externalWaitPercentage = Math.min(externalWaitPercentage, 100);
 				long sleepTime = (0 + 
 						250 + // base sleep
 						(50 * instanceCount) + // a little extra for every instance
-						eventProcessingTime + // the time we just occupied the CPU or other resources
+//						eventProcessingTime + // the time we just occupied the CPU or other resources TODOne factor in external waiting percentage
+						((eventProcessingTime * (100 - externalWaitPercentage)) / 100) + // the time we just occupied the CPU or other resources
 						0);
 				logInfo(getEventProcessorName() + ": sleeping for " + sleepTime + "ms");
 				this.sleepStart = this.eventEnd;

@@ -116,7 +116,7 @@ public abstract class AsynchronousDataActionHandler {
 			for (int a = 0; a < argumentColumns.length; a++)
 				this.argumentNames[a] = argumentColumns[a].getColumnName();
 		}
-		this.argumentNames = ((argumentNames == null) ? new String[0] : argumentNames);
+//		this.argumentNames = ((argumentNames == null) ? new String[0] : argumentNames);
 		this.ACTION_TABLE_NAME = (this.name + "Actions");
 		this.logger = logger;
 		this.io = io;
@@ -515,7 +515,7 @@ public abstract class AsynchronousDataActionHandler {
 						actionThreadStatus += (", for another " + (AsynchronousDataActionHandler.this.actionThread.sleepEnd - time) + "ms");
 				}
 				else if (AsynchronousDataActionHandler.this.actionThread.actionEnd != -1)
-					actionThreadStatus = ("last event finished " + (System.currentTimeMillis() - AsynchronousDataActionHandler.this.actionThread.actionEnd) + "ms ago");
+					actionThreadStatus = ("last action finished " + (System.currentTimeMillis() - AsynchronousDataActionHandler.this.actionThread.actionEnd) + "ms ago");
 				else actionThreadStatus = null;
 				return (this.name + ": " + actionBufferStatus + (AsynchronousDataActionHandler.this.actionThread.workFast ? ", FAST" : "") + ((actionThreadStatus == null) ? "" : (", " + actionThreadStatus)));
 			}
@@ -547,7 +547,8 @@ public abstract class AsynchronousDataActionHandler {
 			this.actionThread.shutdown();
 	}
 	
-	private static final long millisecondsPerMonth = (1000 * 60 * 60 * 24 * 30);
+//	private static final long millisecondsPerMonth = (1000L /* using int incurs overflow */ * 60 * 60 * 24 * 30);
+	private static final long millisecondsPerWeek = (1000 * 60 * 60 * 24 * 7);
 	private static final String[] noArguments = {};
 	
 	/**
@@ -591,7 +592,7 @@ public abstract class AsynchronousDataActionHandler {
 	 * @param priority the priority of the action
 	 */
 	public void enqueueDataAction(String dataId, int priority) {
-		long ago = (millisecondsPerMonth * Math.max(priority, 0));
+		long ago = (millisecondsPerWeek * Math.max(priority, 0));
 		this.doScheduleDataAction(dataId, noArguments, -ago);
 	}
 	
@@ -610,7 +611,7 @@ public abstract class AsynchronousDataActionHandler {
 	 * @param priority the priority of the action
 	 */
 	public void enqueueDataAction(String dataId, String[] arguments, int priority) {
-		long ago = (millisecondsPerMonth * Math.max(priority, 0));
+		long ago = (millisecondsPerWeek * Math.max(priority, 0));
 		this.doScheduleDataAction(dataId, ((arguments == null) ? noArguments : arguments), -ago);
 	}
 	
@@ -808,7 +809,7 @@ public abstract class AsynchronousDataActionHandler {
 					if (da.isInProgress()) {
 						da.setError();
 						synchronized (dataActions) {
-							dataActions.sortUp();
+							dataActions.sortUp(true);
 						}
 					}
 					
@@ -1018,9 +1019,9 @@ public abstract class AsynchronousDataActionHandler {
 				if (shift == 0)
 					return;
 				if (shift < 0)
-					this.dataActions.sortDown();
+					this.dataActions.sortDown(false);
 				else if (shift > 0)
-					this.dataActions.sortUp();
+					this.dataActions.sortUp(false);
 				this.dataActions.notify();
 				persistQuery = "UPDATE " + ACTION_TABLE_NAME + " SET" +
 						" " + DUE_TIME_COLUMN_NAME + " = " + da.due + "" +
@@ -1139,7 +1140,7 @@ public abstract class AsynchronousDataActionHandler {
 			return daPos;
 		}
 		
-		void sortUp() {
+		void sortUp(boolean movingFirst) {
 			//System.out.println("DataActionBuffer.sortUp(): sorting actions, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			DataAction tda;
 			for (int a = (this.first+1); a < this.last; a++) {
@@ -1148,12 +1149,13 @@ public abstract class AsynchronousDataActionHandler {
 					this.actions[a-1] = this.actions[a];
 					this.actions[a] = tda;
 				}
-				else break;
+				else if (movingFirst)
+					break; // first action is modified one, rest is sorted, we're done
 			}
 			//System.out.println("DataActionBuffer.sortUp(): actions sorted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 		}
 		
-		void sortDown() {
+		void sortDown(boolean movingLast) {
 			//System.out.println("DataActionBuffer.sortDown(): sorting actions, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			DataAction tda;
 			for (int a = (this.last-1); a > this.first; a--) {
@@ -1162,7 +1164,8 @@ public abstract class AsynchronousDataActionHandler {
 					this.actions[a-1] = this.actions[a];
 					this.actions[a] = tda;
 				}
-				else break;
+				else if (movingLast)
+					break; // last action is modified one, rest is sorted, we're done
 			}
 			//System.out.println("DataActionBuffer.sortDown(): actions sorted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 		}

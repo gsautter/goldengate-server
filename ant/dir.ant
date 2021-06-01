@@ -14,6 +14,8 @@
 		<mkdir dir="${dist.home}" />
 		<mkdir dir="${dist.home}/Plugins" />
 		<mkdir dir="${dist.home}/Plugins/Bin" />
+		<mkdir dir="${dist.home}/Components" />
+		<mkdir dir="${dist.home}/Components/Bin" />
 	</target>
 	
 	<!-- more or less the reverse of it, delete all the directories again -->

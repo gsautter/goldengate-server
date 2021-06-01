@@ -204,7 +204,7 @@ public abstract class AsynchronousConsoleAction extends ComponentActionConsole {
 					this.actionThread = new AsynchronousActionThread(threadArguments);
 					this.actionThread.setUpdateMonitor(System.out); // TODO use reportXYZ()
 					this.actionThread.startUpdate();
-					this.actionThreadMonitor = new AsynchronousWorkQueue(this.label) {
+					this.actionThreadMonitor = new AsynchronousWorkQueue(this.getActionName()) {
 						public String getStatus() {
 							return (this.name + ": " + actionThread.status);
 						}
@@ -251,6 +251,17 @@ public abstract class AsynchronousConsoleAction extends ComponentActionConsole {
 			else this.reportResult("Current update: " + actionThread.status);
 		}
 		else this.reportError(" Invalid action for '" + this.getActionCommand() + "', use one of '-s', '-m', '-q', '-p', '-r', '-a', or '-c'.");
+	}
+	
+	/**
+	 * Provide the name of the asynchronous action for the background process
+	 * overview. This method must not return null. This default implementation
+	 * simply returns the action command, sub classes are welcome to overwrite
+	 * it as needed to provide a more specific or further qualified name.
+	 * @return the name of the asynchronous action
+	 */
+	protected String getActionName() {
+		return this.command;
 	}
 	
 	/**

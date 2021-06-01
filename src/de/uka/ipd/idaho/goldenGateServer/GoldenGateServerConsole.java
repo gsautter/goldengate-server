@@ -36,6 +36,11 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.TreeMap;
+
+import de.uka.ipd.idaho.stringUtils.StringUtils;
 
 /**
  * @author sautter
@@ -44,30 +49,23 @@ public class GoldenGateServerConsole {
 	
 	//	TODO facilitate ingesting script files from the file system (with '\i', as in psql)
 	
-	/* TODO Only allow valid "change component":
-- create list of valid component prefixes during startup ...
-- .. and transmit it to console on login ...
-- ... as suffix of "WELCOME" line, tab separated
-- change to closest component if:
-  - Levenshtein distance at most <X>
-  - next closest Levenshtein distance at least <X+2>
-- maybe do same for console actions ...
-- ... if maybe with minimum distance of 3 to ensure intent on invasive commands
-	 */
-	
+	private static TreeMap validLetterCodes = new TreeMap(String.CASE_INSENSITIVE_ORDER);
 	private static String currentLetterCode = "";
 	public static void main(String[] args) throws Exception {
 		int ncPort = 15808;
 		int cTimeout = 2;
 		String cAuth = null;
+		boolean cKillPrevious = false;
 		for (int a = 0; a < args.length; a++) {
 			args[a] = args[a].trim();
 			if (args[a].startsWith("-p="))
 				ncPort = Integer.parseInt(args[a].substring("-p=".length()).trim());
-			if (args[a].startsWith("-t="))
+			else if (args[a].startsWith("-t="))
 				cTimeout = Integer.parseInt(args[a].substring("-t=".length()).trim());
-			if (args[a].startsWith("-a="))
+			else if (args[a].startsWith("-a="))
 				cAuth = args[a].substring("-a=".length()).trim();
+			else if (args[a].equals("-k"))
+				cKillPrevious = true;
 		}
 		if (cTimeout < 2)
 			cTimeout = 2;
@@ -103,7 +101,7 @@ public class GoldenGateServerConsole {
 				
 				cOut = new PrintStream(cSocket.getOutputStream(), true);
 				printLocalMessage(" ==> Connection successful, authenticating ...");
-				cOut.println(cAuth);
+				cOut.println((cKillPrevious ? "KILL " : "") + cAuth);
 				break;
 			}
 			catch (ConnectException ce) {
@@ -117,7 +115,7 @@ public class GoldenGateServerConsole {
 					printLocalError("");
 					printLocalError("Unable to connect to GoldenGATE Server on port " + ncPort + ".");
 					if (ncPort == 15808)
-						printLocalMessage("Use '-p=<portNumber>' to connect to a non-standard port");
+						printLocalMessage("Use the '-p=<portNumber>' argument to connect to a non-standard port");
 					printLocalMessage("If you just started GoldenGATE Server, please try again in a few seconds");
 					if (cSocket != null) try {
 						cSocket.close();
@@ -144,15 +142,23 @@ public class GoldenGateServerConsole {
 			response = srvIn.readLine();
 		}
 		catch (SocketTimeoutException ste) {
-			printLocalError("There is already another console connected (only one can be at a time),\n" +
+			printLocalError("There is already another console connected (only one can be at a time),\r\n" +
 					"  or the server failed to respond within " + cTimeout + " seconds.");
 			if (cTimeout <= 2)
-				printLocalMessage("Use '-t=<timeoutInSeconds>' to specify a longer timeout");
+				printLocalMessage("Use the '-t=<timeoutInSeconds>' argument to specify a longer timeout");
 			return;
 		}
 		
 		//	authentication successful, initialize
-		if ("WELCOME".equals(response)) {
+//		if ("WELCOME".equals(response)) {
+		if ("WELCOME".equals(response) || response.startsWith("WELCOME ")) {
+			
+			//	crop and split valid letter codes
+			if (response.startsWith("WELCOME ")) {
+				String[] letterCodes = response.substring("WELCOME ".length()).split("\\s+");
+				for (int c = 0; c < letterCodes.length; c++)
+					validLetterCodes.put(letterCodes[c], letterCodes[c]);
+			}
 			
 			//	print welcome message
 			printLocalMessage(" ==> Authentication successful, have fun");
@@ -195,6 +201,20 @@ public class GoldenGateServerConsole {
 			sInThread.start();
 		}
 		
+		//	report lack of kill parameter
+		else if ("USE_KILL".equals(response)) {
+			printLocalError("There is already another console connected (only one can be at a time)\r\n" +
+					"Use the '-k' argument to kill the existing connection.");
+			return;
+		}
+		
+		//	report unnecessary use kill parameter
+		else if ("DONT_KILL".equals(response)) {
+			printLocalError("There is no other console connected, why are you trying to kill it?\r\n" +
+					"Don't be brutal unless you have to, connect normally.");
+			return;
+		}
+		
 		//	report error and exit
 		else {
 			printLocalError(" ==> " + response);
@@ -221,9 +241,53 @@ public class GoldenGateServerConsole {
 			if ("cc".equals(commandString))
 				currentLetterCode = "";
 			else if (commandString.startsWith("cc ")) {
-				currentLetterCode = commandString.substring("cc".length()).trim();
-				if (currentLetterCode.indexOf(' ') != -1)
-					currentLetterCode = currentLetterCode.substring(0, currentLetterCode.indexOf(' ')).trim();
+//				currentLetterCode = commandString.substring("cc".length()).trim();
+//				if (currentLetterCode.indexOf(' ') != -1)
+//					currentLetterCode = currentLetterCode.substring(0, currentLetterCode.indexOf(' ')).trim();
+				String letterCode = commandString.substring("cc ".length()).trim();
+				String letterCodeSuffix = "";
+				if (letterCode.indexOf(' ') != -1) {
+					letterCodeSuffix = letterCode.substring(letterCode.indexOf(' '));
+					letterCode = letterCode.substring(0, letterCode.indexOf(' '));
+				}
+				String csLetterCode = ((String) validLetterCodes.get(letterCode)); // case insensitive map normalizes case
+				if (letterCode.equals(csLetterCode)) {} // input correct, including case
+				else if (csLetterCode != null) /* correct case of letter code */ {
+					letterCode = csLetterCode;
+					commandString = ("cc " + letterCode + letterCodeSuffix);
+				}
+				else {
+					int maxDist = (letterCode.length() / 3); // let's not get all too speculative
+					int minDist = (maxDist + 1);
+					ArrayList minDistLetterCodes = new ArrayList(4);
+					for (Iterator lcit = validLetterCodes.keySet().iterator(); lcit.hasNext();) {
+						String lc = ((String) lcit.next());
+						int lcDist = StringUtils.getLevenshteinDistance(letterCode, lc, (maxDist + 1), false);
+						if (maxDist < lcDist)
+							continue; // too far away
+						if (minDist < lcDist)
+							continue; // further away than current best match
+						if (lcDist < minDist) /* new (so far) unambiguous best match */ {
+							minDistLetterCodes.clear();
+							minDist = lcDist;
+						}
+						minDistLetterCodes.add(lc);
+					}
+					if (minDistLetterCodes.size() == 1) // we have an unambiguous best match
+						letterCode = ((String) minDistLetterCodes.get(0));
+					else {
+						if (minDistLetterCodes.isEmpty())
+							printLocalError("Invalid letter code '" + letterCode + "'");
+						else {
+							printLocalError("Invalid letter code '" + letterCode + "', equally similar to");
+							for (int c = 0; c < minDistLetterCodes.size(); c++)
+								printLocalError(" - " + minDistLetterCodes.get(c));
+						}
+						printInputHeader();
+						continue;
+					}
+				}
+				currentLetterCode = letterCode;
 			}
 			
 			//	send command to server if not empty
@@ -251,7 +315,7 @@ public class GoldenGateServerConsole {
 		
 		//	crop format off message
 		String format;
-		if ((msg.length() > 4) && msg.substring(0, 4).matches("[REWID][BCN]\\:\\:")) {
+		if ((msg.length() >= 4) && msg.substring(0, 4).matches("[REWID][BCN]\\:\\:")) {
 			format = GoldenGateServerMessageFormatter.getFormat(msg.charAt(0), msg.charAt(1));
 			msg = msg.substring(4);
 		}

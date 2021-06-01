@@ -45,7 +45,6 @@ import de.uka.ipd.idaho.htmlXmlUtil.accessories.HtmlPageBuilder;
  * @author sautter
  */
 public class ReInitializerModul extends AuthenticatedWebClientModul {
-	
 	private WebAppHost webAppHost;
 	
 	/* (non-Javadoc)

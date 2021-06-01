@@ -59,14 +59,14 @@ class InstallerUtils {
 			return;
 		}
 		
+		//	report status
+		System.out.println(" - " + (targetFileExists ? "updating" : "installing") + " " + fileName);
+		
 		//	make sure folders exist
 		targetFile.getParentFile().mkdirs();
 		
 		//	create target file
 		targetFile.createNewFile();
-		
-		//	report status
-		System.out.println(" - " + (targetFileExists ? "updating" : "installing") + " " + fileName);
 		
 		//	copy file
 		OutputStream target = new BufferedOutputStream(new FileOutputStream(targetFile));

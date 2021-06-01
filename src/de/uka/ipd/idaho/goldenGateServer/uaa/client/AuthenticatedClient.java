@@ -61,7 +61,7 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	private LinkedHashSet permissions = null;
 	
 	/** Constructor
-	 * @param	sCon	the connection to the server to communicate with
+	 * @param sCon the connection to the server to communicate with
 	 */
 	private AuthenticatedClient(ServerConnection sCon) {
 		this.serverConnection = sCon;
@@ -115,13 +115,13 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	
 	/**
 	 * Check if this client is authenticated with a user having administrative
-	 * priviledges at the backing server. This is indicated by the session ID
+	 * privileges at the backing server. This is indicated by the session ID
 	 * ending with the ADMIN_SESSION_ID_SUFFIX constant. This check is only for
 	 * testing if admin operations make sense to be available, the
-	 * administrative priviledges will be re-checked on server side for every
+	 * administrative privileges will be re-checked on server side for every
 	 * administrative operation performed.
 	 * @return true if this client is logged in and the user this client is
-	 *         authenticated with has administrative priviledges at the backing
+	 *         authenticated with has administrative privileges at the backing
 	 *         server
 	 */
 	public boolean isAdmin() {
@@ -166,7 +166,7 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	 * interaction. If no user permission authority is installed, this method
 	 * returns the specified default value. The idea is to facilitate granting
 	 * specific permissions to all users in case no user permission authority is
-	 * installed. It is up to the invocing component to decide this.
+	 * installed. It is up to the invoking component to decide this.
 	 * @param permission the permission to check
 	 * @param grantByDefault the value to return if no user permission authority
 	 *            is installed
@@ -176,13 +176,10 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	public boolean hasPermission(String permission, boolean grantByDefault) {
 		if (!this.isLoggedIn())
 			return false;
-		
 		else if (this.isAdmin())
 			return true;
-		
 		else if (this.useDefaultPermissions)
 			return grantByDefault;
-		
 		else return this.permissions.contains(permission);
 	}
 	

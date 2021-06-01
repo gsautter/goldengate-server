@@ -32,6 +32,7 @@ import java.io.File;
 
 import de.uka.ipd.idaho.gamta.util.GamtaClassLoader;
 import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentInitializer;
+import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentLoadErrorLogger;
 
 /**
  * Loader utility for creating server component instances
@@ -63,25 +64,29 @@ public class GoldenGateServerComponentLoader {
 	 * manually in case you need to make some additional jar files available.
 	 * @param componentFolder the folder containing the jar files to serch for
 	 *            server components
+	 * @param errorLogger an error logger to collect any errors that occur
 	 * @return an array holding the server components found in the jar files in
 	 *         the specified folder
 	 */
-	public static GoldenGateServerComponent[] loadServerComponents(final File componentFolder) {
+	public static GoldenGateServerComponent[] loadServerComponents(final File componentFolder, ComponentLoadErrorLogger errorLogger) {
 		
 		//	get base directory
-		if(!componentFolder.exists()) componentFolder.mkdir();
+		if(!componentFolder.exists())
+			componentFolder.mkdir();
 		
 		//	get components
 		Object[] componentObject = GamtaClassLoader.loadComponents(
-				componentFolder, 
-				GoldenGateServerComponent.class, 
+				componentFolder,
+				GoldenGateServerComponent.class,
 				new ComponentInitializer() {
 					public void initialize(Object component, String componentJarName) throws Exception {
-						File dataPath = new File(componentFolder, (componentJarName.substring(0, (componentJarName.length() - 4)) + "Data"));
-						if (!dataPath.exists()) dataPath.mkdir();
+						File dataPath = new File(componentFolder, (componentJarName.substring(0, (componentJarName.length() - ".jar".length())) + "Data"));
+						if (!dataPath.exists())
+							dataPath.mkdir();
 						((GoldenGateServerComponent) component).setDataPath(dataPath);
 					}
-				});
+				},
+				errorLogger);
 		
 		//	store & return components
 		GoldenGateServerComponent[] components = new GoldenGateServerComponent[componentObject.length];

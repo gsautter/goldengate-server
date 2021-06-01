@@ -650,14 +650,13 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 				this.writeLine("<tr>");
 				this.writeLine("<td width=\"100%\" class=\"messageTableBody\">");
 				
-				for (int m = 0; m < this.messages.length; m++) {
+				for (int m = 0; m < this.messages.length; m++)
 					if (this.messages[m] != null) {
 						if (m != 0) this.writeLine("");
 						this.write("<span class=\"message\">");
 						this.write(IoTools.prepareForHtml(this.messages[m], HTML_CHAR_MAPPING));
 						this.writeLine("</span>");
 					}
-				}
 				this.writeLine("</td>");
 				this.writeLine("</tr>");
 				

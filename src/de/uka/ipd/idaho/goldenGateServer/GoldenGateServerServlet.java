@@ -223,7 +223,7 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		this.environmentSettings = settings.getSubset("ENV");
 		
 		//	load server components
-		GoldenGateServerComponent[] loadedServerComponents = GoldenGateServerComponentLoader.loadServerComponents(new File(rootPath, COMPONENT_FOLDER_NAME));
+		GoldenGateServerComponent[] loadedServerComponents = GoldenGateServerComponentLoader.loadServerComponents(new File(rootPath, COMPONENT_FOLDER_NAME), null);
 		
 		//	initialize and register components
 		ArrayList serverComponentList = new ArrayList();

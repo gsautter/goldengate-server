@@ -97,14 +97,17 @@ public class UserDataManagerModul extends AuthenticatedWebClientModul implements
 				for (int f = 0; f < fields.length; f++) {
 					String name = (this.fieldSets[fs].name + "." + fields[f].name);
 					String value = request.getParameter(name);
-					if (value != null) {
-						if ((fields[f].match == null) || value.matches(fields[f].match))
-							uds.setProperty(name, value);
-						else {
-							if (messageCollector.isEmpty())
-								messageCollector.addElement("Personal data contains errors:");
-							messageCollector.addElement(" - '" + IoTools.prepareForHtml(value, HTML_CHAR_MAPPING) + "' is no valid value for field '" + IoTools.prepareForHtml(fields[f].label, HTML_CHAR_MAPPING) + "'");
-						}
+					if (value == null)
+						continue;
+					value = value.trim();
+					if (value.length() == 0)
+						continue;
+					if ((fields[f].match == null) || value.matches(fields[f].match))
+						uds.setProperty(name, value);
+					else {
+						if (messageCollector.isEmpty())
+							messageCollector.addElement("Personal data contains errors:");
+						messageCollector.addElement(" - '" + IoTools.prepareForHtml(value, HTML_CHAR_MAPPING) + "' is no valid value for field '" + IoTools.prepareForHtml(fields[f].label, HTML_CHAR_MAPPING) + "'");
 					}
 				}
 			}

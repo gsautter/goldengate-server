@@ -51,6 +51,9 @@
 	<property name="jar.ups" value="${dist.home}/Components/GgServerUPS.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
+	<property name="jar.dta" value="${dist.home}/Components/GgServerDTA.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
 	<property name="jar.enr" value="${dist.home}/Components/GgServerENR.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
@@ -60,7 +63,16 @@
 	<property name="jar.nam" value="${dist.home}/Components/GgServerNAM.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
+	<property name="jar.https" value="${dist.home}/Components/GgServerHttpsEnabler.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
 	<property name="jar.serverconsole" value="${dist.home}/GgServerConsole.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.serverwatchdog" value="${dist.home}/GgServerWatchdog.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.slaveutils" value="${dist.home}/Components/Bin/GgServerSlaveUtils.jar" />
 	
 	
 	<!-- path to the .jar file that shall be created -->
