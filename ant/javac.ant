@@ -28,7 +28,7 @@
 	<target name="compileSrv" description="Compile GoldenGATE Server backend Java sources">
 		
 	    <!-- Compile Java classes as necessary -->
-	    <javac destdir="${build.home}/classes" includeantruntime="false" source="1.5" target="1.5" debug="true" debuglevel="lines,vars,source">
+	    <javac destdir="${build.home}/classes" includeantruntime="false" debug="true" debuglevel="lines,vars,source">
 	    	<src path="${src.home}" />
     		<include name="**/goldenGateServer/*.java" />
     		<include name="**/goldenGateServer/aaa/*.java" />
@@ -56,7 +56,7 @@
 	<target name="compileClt" depends="check-gg" if="${gg.exists}" description="Compile GoldenGATE Editor plugin Java sources">
 		
 	    <!-- Compile Java classes as necessary -->
-	    <javac destdir="${build.home}/classes" includeantruntime="false" source="1.5" target="1.5" debug="true" debuglevel="lines,vars,source">
+	    <javac destdir="${build.home}/classes" includeantruntime="false" debug="true" debuglevel="lines,vars,source">
 	    	<src path="${src.home}" />
     		<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
     		<include name="**/goldenGateServer/client/ServerConnection.java" />
@@ -71,7 +71,7 @@
 	<target name="compileWeb" description="Compile GoldenGATE Server web front-end Java sources">
 		
 	    <!-- Compile Java classes as necessary -->
-	    <javac destdir="${build.home}/classes" includeantruntime="false" source="1.5" target="1.5" debug="true" debuglevel="lines,vars,source">
+	    <javac destdir="${build.home}/classes" includeantruntime="false" debug="true" debuglevel="lines,vars,source">
 	    	<src path="${src.home}" />
     		<include name="**/goldenGateServer/GoldenGateServerConstants.java" />
     		<include name="**/goldenGateServer/GoldenGateServerEventService.java" />
