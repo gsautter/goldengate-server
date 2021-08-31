@@ -36,6 +36,9 @@
 	<property name="jar.aaa" value="${dist.home}/Components/GgServerAAA.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
+	<property name="jar.ada" value="${dist.home}/Components/GgServerADA.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
 	<property name="jar.aep" value="${dist.home}/Components/GgServerAEP.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
@@ -64,6 +67,9 @@
 	
 	<!-- path to the .jar file that shall be created -->
 	<property name="jar.https" value="${dist.home}/Components/GgServerHttpsEnabler.jar" />
+	
+	<!-- path to the .jar file that shall be created -->
+	<property name="jar.pcd" value="${dist.home}/Components/GgServerPCD.jar" />
 	
 	<!-- path to the .jar file that shall be created -->
 	<property name="jar.serverconsole" value="${dist.home}/GgServerConsole.jar" />

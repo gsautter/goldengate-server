@@ -117,7 +117,7 @@ public class MasterProcessInterface {
 		
 		//	receive monitoring and control commands from System.in
 		final BufferedReader sysInBr = new BufferedReader(new InputStreamReader(this.sysIn));
-		Thread sysInThread = new Thread("MasterInterface") {
+		Thread sysInThread = new Thread("MasterProcessInterface") {
 			public void run() {
 				try {
 					for (String inLine; (inLine = sysInBr.readLine()) != null;) {
@@ -277,10 +277,11 @@ public class MasterProcessInterface {
 	 * @param error the error whose stack trace to send
 	 */
 	public void sendError(Throwable error) {
-        this.sysOut.println("EST:" + error.getClass().getName() + ": " + error.getMessage());
-        StackTraceElement[] stes = error.getStackTrace();
-        for (int e = 0; e < stes.length; e++)
-            this.sysOut.println("EST:\tat " + stes[e]);
+		this.sysOut.println("EST:" + error.getClass().getName() + ": " + error.getMessage());
+		StackTraceElement[] stes = error.getStackTrace();
+		for (int e = 0; e < stes.length; e++)
+			this.sysOut.println("EST:\tat " + stes[e]);
+		this.sysOut.println("EST:");
 	}
 	
 	/**

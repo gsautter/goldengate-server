@@ -30,10 +30,14 @@ package de.uka.ipd.idaho.goldenGateServer.util;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
@@ -53,27 +57,139 @@ import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActi
  */
 public abstract class AsynchronousDataActionHandler {
 	
+	/**
+	 * Interface to static instance management methods, intended solely for use
+	 * by console integration.
+	 * 
+	 * @author sautter
+	 */
+	public static class ConsoleInterface {
+		ConsoleInterface() { /* not really for public access */ }
+		public boolean setPause(boolean pause) {
+			return setAdaPause(pause);
+		}
+		public void listInstances(String prefix, ComponentActionConsole cac) {
+			AsynchronousDataActionHandler.listInstances(prefix, cac);
+		}
+		public void checkInstances(String prefix, ComponentActionConsole cac) {
+			AsynchronousDataActionHandler.checkInstances(prefix, cac);
+		}
+	}
+	
+	/**
+	 * Retrieve the console interface. On all but the very first call, this
+	 * method throws an IllegalStateException, as the console interface is not
+	 * intended for other purposes.
+	 * @return the console interface
+	 */
+	public static ConsoleInterface getConsoleInterface() {
+		if (consoleInterface == null)
+			return (consoleInterface = new ConsoleInterface());
+		throw new IllegalStateException("Console interface retrieved before.");
+	}
+	private static ConsoleInterface consoleInterface = null;
+	
+	private static int instanceCount = 0;
+	private static TreeMap instancesByName = new TreeMap();
+	private static synchronized void registerInstance(AsynchronousDataActionHandler ah) {
+		instanceCount++;
+		System.out.println(ah.name + ": registered as instance number " + instanceCount + ".");
+		instancesByName.put(ah.name, ah);
+	}
+	
+	static void listInstances(String prefix, ComponentActionConsole cac) {
+		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
+		for (int i = 0; i < instanceNames.size(); i++) {
+			String ahName = ((String) instanceNames.get(i));
+			AsynchronousDataActionHandler ah = ((AsynchronousDataActionHandler) instancesByName.get(ahName));
+//			cac.reportResult(prefix + ahName + ": " + ah.getClass().getName() + ", " + ah.dataActions.size() + " data actions pending" + ((ah.actionThread == null) ? ", NOT STARTED" : (ah.actionThread.workFast ? ", IN FAST MODE" : "")));
+			if (ah.actionThreadTrays == null)
+				cac.reportResult(prefix + ahName + ": " + ah.getClass().getName() + ", " + ah.dataActions.size() + " data actions pending, NOT STARTED");
+			else if ((ah.actionThreadTrays.length == 1) && (ah.actionThreadTrays[0] != null))
+				cac.reportResult(prefix + ahName + ": " + ah.getClass().getName() + ", " + ah.dataActions.size() + " data actions pending" + (ah.workFast ? ", IN FAST MODE" : ""));
+			else {
+				cac.reportResult(prefix + ahName + ": " + ah.getClass().getName() + ", " + ah.dataActions.size() + " data actions pending" + (ah.workFast ? ", IN FAST MODE" : "") + ", " + ah.actionThreadTrays.length + " action threads:");
+				for (int t = 0; t < ah.actionThreadTrays.length; t++) {
+					if (ah.actionThreadTrays[t] != null)
+						cac.reportResult(prefix + ahName + (t+1) + ": " + ah.getClass().getName());
+				}
+			}
+		}
+	}
+	
+	static void checkInstances(String prefix, ComponentActionConsole cac) {
+		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
+		for (int i = 0; i < instanceNames.size(); i++) {
+			String ahName = ((String) instanceNames.get(i));
+			AsynchronousDataActionHandler ah = ((AsynchronousDataActionHandler) instancesByName.get(ahName));
+			if (ah.startActionHandler())
+				cac.reportResult(prefix + ahName + " (" + ah.getClass().getName() + "): worker thread" + ((ah.actionThreadCount == 1) ? "" : "s") + " restarted");
+			else cac.reportResult(prefix + ahName + " (" + ah.getClass().getName() + "): worker thread" + ((ah.actionThreadCount == 1) ? "" : "s") + " alive");
+		}
+	}
+	
+	static final Object adaPauseLock = new Object();
+	static final Set adaPausedInstances = Collections.synchronizedSet(new HashSet());
+	static boolean adaPause = false;
+	static boolean setAdaPause(boolean pause) {
+		if (adaPause == pause)
+			return false;
+		else if (pause) {
+			adaPause = true;
+			return true;
+		}
+		else {
+			synchronized (adaPauseLock) {
+				adaPause = false;
+			}
+			do {
+				synchronized (adaPauseLock) {
+					adaPauseLock.notify();
+				}
+				Thread.yield();
+			} while (adaPausedInstances.size() != 0);
+			return true;
+		}
+	}
+	
 	private final String ACTION_TABLE_NAME;
 	private static final String DATA_ID_COLUMN_NAME = "dataId";
 	private static final String DATA_ID_HASH_COLUMN_NAME = "dataIdHash";
 	private static final String DUE_TIME_COLUMN_NAME = "dueTime";
 	
-	private String name;
+	final String name;
 	private String[] argumentNames;
 	private GoldenGateServerActivityLogger logger;
 	private IoProvider io;
 	private TableColumnDefinition[] argumentColumns;
 	private String argumentColumnString;
 	
-	private DataActionThread actionThread;
-	private AsynchronousWorkQueue actionQueueMonitor;
+//	private DataActionThread actionThread;
+//	private AsynchronousWorkQueue actionQueueMonitor;
+	final int actionThreadCount;
+	DataActionThreadTray[] actionThreadTrays = null;
+	boolean run = true;
+	boolean workFast = false;
+	boolean pause = false;
 	
 	/**
 	 * @param name the name of the scheduler (letters only, and no spaces)
 	 * @param logger the logger to report to
 	 */
 	public AsynchronousDataActionHandler(String name, GoldenGateServerActivityLogger host) {
-		this(name, null, host, null, null);
+		this(name, 1, null, host, null, null);
+	}
+	
+	/**
+	 * @param name the name of the scheduler (letters only, and no spaces)
+	 * @param threads the number of threads to use (subclasses using more
+	 *            than one thread must make sure their implementation of
+	 *            <code>performDataAction()</code> can handle executing more
+	 *            than once at the same time)
+	 * @param logger the logger to report to
+	 */
+	public AsynchronousDataActionHandler(String name, int threads, GoldenGateServerActivityLogger host) {
+		this(name, threads, null, host, null, null);
 	}
 	
 	/**
@@ -82,7 +198,20 @@ public abstract class AsynchronousDataActionHandler {
 	 * @param logger the logger to report to
 	 */
 	public AsynchronousDataActionHandler(String name, String[] argumentNames, GoldenGateServerActivityLogger host) {
-		this(name, argumentNames, host, null, null);
+		this(name, 1, argumentNames, host, null, null);
+	}
+	
+	/**
+	 * @param name the name of the scheduler (letters only, and no spaces)
+	 * @param threads the number of threads to use (subclasses using more
+	 *            than one thread must make sure their implementation of
+	 *            <code>performDataAction()</code> can handle executing more
+	 *            than once at the same time)
+	 * @param argumentNames the names of the arguments for data actions
+	 * @param logger the logger to report to
+	 */
+	public AsynchronousDataActionHandler(String name, int threads, String[] argumentNames, GoldenGateServerActivityLogger host) {
+		this(name, threads, argumentNames, host, null, null);
 	}
 	
 	/**
@@ -91,7 +220,20 @@ public abstract class AsynchronousDataActionHandler {
 	 * @param io the IoProvider to use for persisting pending actions
 	 */
 	public AsynchronousDataActionHandler(String name, GoldenGateServerActivityLogger logger, IoProvider io) {
-		this(name, null, logger, io, null);
+		this(name, 1, null, logger, io, null);
+	}
+	
+	/**
+	 * @param name the name of the scheduler (letters only, and no spaces)
+	 * @param threads the number of threads to use (subclasses using more
+	 *            than one thread must make sure their implementation of
+	 *            <code>performDataAction()</code> can handle executing more
+	 *            than once at the same time)
+	 * @param logger the logger to report to
+	 * @param io the IoProvider to use for persisting pending actions
+	 */
+	public AsynchronousDataActionHandler(String name, int threads, GoldenGateServerActivityLogger logger, IoProvider io) {
+		this(name, threads, null, logger, io, null);
 	}
 	
 	/**
@@ -102,11 +244,27 @@ public abstract class AsynchronousDataActionHandler {
 	 * @param io the IoProvider to use for persisting pending actions
 	 */
 	public AsynchronousDataActionHandler(String name, TableColumnDefinition[] argumentColumns, GoldenGateServerActivityLogger logger, IoProvider io) {
-		this(name, null, logger, io, argumentColumns);
+		this(name, 1, null, logger, io, argumentColumns);
 	}
 	
-	private AsynchronousDataActionHandler(String name, String[] argumentNames, GoldenGateServerActivityLogger logger, IoProvider io, TableColumnDefinition[] argumentColumns) {
+	/**
+	 * @param name the name of the scheduler (letters only, and no spaces)
+	 * @param threads the number of threads to use (subclasses using more
+	 *            than one thread must make sure their implementation of
+	 *            <code>performDataAction()</code> can handle executing more
+	 *            than once at the same time)
+	 * @param argumentColumns the column definitions for persisting the
+	 *            arguments for data actions (also defines the names)
+	 * @param logger the logger to report to
+	 * @param io the IoProvider to use for persisting pending actions
+	 */
+	public AsynchronousDataActionHandler(String name, int threads, TableColumnDefinition[] argumentColumns, GoldenGateServerActivityLogger logger, IoProvider io) {
+		this(name, threads, null, logger, io, argumentColumns);
+	}
+	
+	private AsynchronousDataActionHandler(String name, int threads, String[] argumentNames, GoldenGateServerActivityLogger logger, IoProvider io, TableColumnDefinition[] argumentColumns) {
 		this.name = name;
+		this.actionThreadCount = Math.max(threads, 1);
 		if (argumentNames != null)
 			this.argumentNames = argumentNames;
 		else if (argumentColumns == null)
@@ -116,7 +274,6 @@ public abstract class AsynchronousDataActionHandler {
 			for (int a = 0; a < argumentColumns.length; a++)
 				this.argumentNames[a] = argumentColumns[a].getColumnName();
 		}
-//		this.argumentNames = ((argumentNames == null) ? new String[0] : argumentNames);
 		this.ACTION_TABLE_NAME = (this.name + "Actions");
 		this.logger = logger;
 		this.io = io;
@@ -145,6 +302,9 @@ public abstract class AsynchronousDataActionHandler {
 			this.io.indexColumn(ACTION_TABLE_NAME, DATA_ID_COLUMN_NAME);
 			this.io.indexColumn(ACTION_TABLE_NAME, DATA_ID_HASH_COLUMN_NAME);
 		}
+		
+		//	add to registry
+		registerInstance(this);
 	}
 	
 	private static final String SCHEDULE_ACTION_COMMAND = "scheduleAction";
@@ -154,6 +314,8 @@ public abstract class AsynchronousDataActionHandler {
 	private static final String ACTION_ERRORS_COMMAND = "actionErrors";
 	private static final String WORK_FAST_COMMAND = "workFast";
 	private static final String WORK_SLOW_COMMAND = "workSlow";
+	private static final String PAUSE_COMMAND = "pause";
+	private static final String UNPAUSE_COMMAND = "unpause";
 	private static final String WORK_NOW_COMMAND = "workNow";
 	private static final String DUMP_STACK_COMMAND = "dumpStack";
 	
@@ -284,7 +446,8 @@ public abstract class AsynchronousDataActionHandler {
 				if (arguments.length != 0)
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 				else synchronized (dataActions) {
-					this.reportResult(" " + dataActions.size() + " data actions scheduled for execution, next due in " + dataActions.getNextDueIn() + "ms");
+//					this.reportResult(" " + dataActions.size() + " data actions scheduled for execution, next due in " + dataActions.getNextDueIn() + "ms");
+					this.reportResult(" " + dataActions.size() + " data actions scheduled for execution, next due in " + dataActions.getNextDueIn(actionThreadCount) + "ms");
 				}
 			}
 		};
@@ -358,7 +521,7 @@ public abstract class AsynchronousDataActionHandler {
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length != 0) 
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
-				else actionThread.setWorkFast(true, this);
+				else setWorkFast(true, this);
 			}
 		};
 		cal.add(cac);
@@ -378,7 +541,7 @@ public abstract class AsynchronousDataActionHandler {
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length != 0) 
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
-				else actionThread.setWorkFast(false, this);
+				else setWorkFast(false, this);
 			}
 		};
 		cal.add(cac);
@@ -398,8 +561,47 @@ public abstract class AsynchronousDataActionHandler {
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length != 0)
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
-				else if (actionThread != null)
-					actionThread.workNow(true);
+				else workNow(true);
+			}
+		};
+		cal.add(cac);
+		
+		//	pause action handler
+		cac = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return PAUSE_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						PAUSE_COMMAND,
+						"Pause the action handler."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else setPause(true, this);
+			}
+		};
+		cal.add(cac);
+		
+		//	un-pause action handler
+		cac = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return UNPAUSE_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						UNPAUSE_COMMAND,
+						"Un-pause the action handler."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else setPause(false, this);
 			}
 		};
 		cal.add(cac);
@@ -417,11 +619,23 @@ public abstract class AsynchronousDataActionHandler {
 				return explanation;
 			}
 			public void performActionConsole(String[] arguments) {
-				if (arguments.length != 0)
+				if (arguments.length != 0) {
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
-				else if (actionThread != null) {
-					StackTraceElement[] stes = actionThread.getStackTrace();
-					this.reportResult(actionThread.getName() + ":");
+					return;
+				}
+				if (actionThreadTrays == null)
+					return;
+				if ((actionThreadTrays.length == 1) && (actionThreadTrays[0] != null)) {
+					StackTraceElement[] stes = actionThreadTrays[0].actionThread.getStackTrace();
+					this.reportResult(actionThreadTrays[0].actionThread.getName() + ":");
+					for (int e = 0; e < stes.length; e++)
+						this.reportResult("  at " + stes[e].toString());
+				}
+				else for (int t = 0; t < actionThreadTrays.length; t++) {
+					if (actionThreadTrays[t] == null)
+						continue;
+					StackTraceElement[] stes = actionThreadTrays[t].actionThread.getStackTrace();
+					this.reportResult(actionThreadTrays[t].actionThread.getName() + ":");
 					for (int e = 0; e < stes.length; e++)
 						this.reportResult("  at " + stes[e].toString());
 				}
@@ -442,6 +656,23 @@ public abstract class AsynchronousDataActionHandler {
 		System.arraycopy(array2, 0, array, array1.length, array2.length);
 		return array;
 	}
+	
+	/* TODO Make number of parallel threads in ADA adjustable via console:
+- simply create more worker threads on increase
+- simply let worker threads with high numbers run out on decease
+- keeps (temporary) single thread in multi-thread behavior ... BUT SO ?!?
+- still use maximum number as config parameter ...
+- ... but add initial number of threads to that
+- add "setThreads" command:
+  - no arguments: show status
+  - one int argument: set number ...
+  - ... throwing error if above maximum
+  - more arguments: error
+  ==> maybe configure overall maximum via ADA console component ...
+  ==> ... or via main server config ...
+  ==> ... and check per-ADA maximums against that
+==> allows for shifting threads between IMI and IMP as needed ... STONKS
+	 */
 	
 	/**
 	 * Start the scheduler. This method should only be called once the code
@@ -497,29 +728,8 @@ public abstract class AsynchronousDataActionHandler {
 			}
 		}
 		
-		//	start action worker thread
-		this.actionThread = new DataActionThread(this.name + "ActionWorker");
-		this.actionThread.start();
-		
-		//	link up to monitoring
-		this.actionQueueMonitor = new AsynchronousWorkQueue(this.name) {
-			public String getStatus() {
-				String actionBufferStatus = (dataActions.size() + " actions scheduled, next due in " + dataActions.getNextDueIn() + "ms");
-				String actionThreadStatus;
-				if (AsynchronousDataActionHandler.this.actionThread.actionStart != -1)
-					actionThreadStatus = ("working since " + (System.currentTimeMillis() - AsynchronousDataActionHandler.this.actionThread.actionStart) + "ms");
-				else if (AsynchronousDataActionHandler.this.actionThread.sleepStart != -1) {
-					long time = System.currentTimeMillis();
-					actionThreadStatus = ("sleeping since " + (time - AsynchronousDataActionHandler.this.actionThread.sleepStart) + "ms");
-					if (time < AsynchronousDataActionHandler.this.actionThread.sleepEnd)
-						actionThreadStatus += (", for another " + (AsynchronousDataActionHandler.this.actionThread.sleepEnd - time) + "ms");
-				}
-				else if (AsynchronousDataActionHandler.this.actionThread.actionEnd != -1)
-					actionThreadStatus = ("last action finished " + (System.currentTimeMillis() - AsynchronousDataActionHandler.this.actionThread.actionEnd) + "ms ago");
-				else actionThreadStatus = null;
-				return (this.name + ": " + actionBufferStatus + (AsynchronousDataActionHandler.this.actionThread.workFast ? ", FAST" : "") + ((actionThreadStatus == null) ? "" : (", " + actionThreadStatus)));
-			}
-		};
+		//	start action handler
+		this.startActionHandler();
 	}
 	
 	private static boolean isDefaultValue(String value, String dataType) {
@@ -536,15 +746,63 @@ public abstract class AsynchronousDataActionHandler {
 		else return false;
 	}
 	
+	boolean startActionHandler() {
+		
+		//	create array for action worker threads (we fill it below)
+		if (this.actionThreadTrays == null)
+			this.actionThreadTrays = new DataActionThreadTray[this.actionThreadCount];
+		
+		//	check all action worker threads
+		else for (int t = 0; t < this.actionThreadTrays.length; t++) {
+			if (this.actionThreadTrays[t].actionThread.isAlive())
+				continue;
+			this.actionThreadTrays[t].actionQueueMonitor.dispose();
+			this.actionThreadTrays[t] = null;
+		}
+		
+		//	create and start action worker threads
+		int actionThreadStartCount = 0;
+		for (int t = 0; t < this.actionThreadTrays.length; t++) {
+			if (this.actionThreadTrays[t] != null)
+				continue;
+			String number = ((this.actionThreadCount == 1) ? "" : ("" + (t+1)));
+			DataActionThread actionThread = new DataActionThread(this.name + "ActionWorker" + number);
+			actionThread.start();
+			this.actionThreadTrays[t] = new DataActionThreadTray(actionThread, (this.name + number));
+			actionThreadStartCount++;
+		}
+		
+		//	did we create anything?
+		return (actionThreadStartCount != 0);
+	}
+	
 	/**
 	 * Shut down the scheduler. This method terminates the wrapped worker thread
 	 * and thus should be called on system shutdown.
 	 */
 	public void shutdown() {
-		if (this.actionQueueMonitor != null)
-			this.actionQueueMonitor.dispose();
-		if (this.actionThread != null)
-			this.actionThread.shutdown();
+		if (this.actionThreadTrays == null)
+			return;
+		
+		//	clear all pending actions to prevent starting new one
+		synchronized (this.dataActions) {
+			this.run = false;
+			this.dataActions.clear();
+		}
+		
+		//	release all threads waiting on action
+		do {
+			synchronized (this.dataActions) {
+				this.dataActions.notify();
+			}
+			Thread.yield();
+		} while (this.dataActionWaiting.size() != 0);
+		
+		//	interrupt any sleeping or waiting or pausing
+		for (int t = 0; t < this.actionThreadTrays.length; t++) {
+			if (this.actionThreadTrays[t] != null)
+				this.actionThreadTrays[t].actionThread.interrupt();
+		}
 	}
 	
 //	private static final long millisecondsPerMonth = (1000L /* using int incurs overflow */ * 60 * 60 * 24 * 30);
@@ -681,7 +939,7 @@ public abstract class AsynchronousDataActionHandler {
 	 */
 	public long getNextDataActionDueIn() {
 		synchronized (this.dataActions) {
-			return this.dataActions.getNextDueIn();
+			return this.dataActions.getNextDueIn(this.actionThreadCount);
 		}
 	}
 	
@@ -697,7 +955,7 @@ public abstract class AsynchronousDataActionHandler {
 	 * @param cac the console action to report results and errors to
 	 */
 	public void setFastWorkingActive(boolean fwa, ComponentActionConsole cac) {
-		this.actionThread.setWorkFast(fwa, cac);
+		this.setWorkFast(fwa, cac);
 	}
 	
 	/**
@@ -716,13 +974,40 @@ public abstract class AsynchronousDataActionHandler {
 	}
 	
 	/**
+	 * Retrieve the number of action threads, equal to the argument handed to
+	 * the constructor.
+	 * @return the number of action threads
+	 */
+	public int getActionThreadCount() {
+		return this.actionThreadCount;
+	}
+	
+	/**
 	 * Retrieve the current stack trace of the wrapped data action worker thread.
 	 * This is mainly intended for monitoring and diagnostic purposes. Before the
 	 * <code>start()</code> method is called, this method returns null.
 	 * @return the current stack of the action worker thread
 	 */
 	public StackTraceElement[] getDataActionThreadStackTrace() {
-		return ((this.actionThread == null) ? null : this.actionThread.getStackTrace());
+		return this.getDataActionThreadStackTrace(0);
+	}
+	
+	/**
+	 * Retrieve the current stack trace of one of the wrapped data action
+	 * worker threads. This is mainly intended for monitoring and diagnostic
+	 * purposes. Before the <code>start()</code> method is called, this method
+	 * returns null.
+	 * @param t the indes of the thread whose stack trace to get
+	 * @return the current stack of the t-th action worker thread
+	 */
+	public StackTraceElement[] getDataActionThreadStackTrace(int t) {
+		if (this.actionThreadTrays == null)
+			return null;
+		if ((t < 0) || (this.actionThreadCount <= t))
+			return null;
+		if (this.actionThreadTrays[t] == null)
+			return null;
+		return this.actionThreadTrays[t].actionThread.getStackTrace();
 	}
 	
 	/**
@@ -748,30 +1033,43 @@ public abstract class AsynchronousDataActionHandler {
 	}
 	
 	private class DataActionThread extends Thread {
-		private boolean run = true;
-		boolean workFast = false;
 		long actionStart = -1;
 		long actionEnd = -1;
-		private final Object sleepLock = new Object();
+		final Object sleepLock = new Object();
 		long sleepStart = -1;
 		long sleepEnd = -1;
+		final Object pauseLock = new Object();
 		DataActionThread(String name) {
 			super(name);
 		}
 		public void run() {
 			
 			//	do the job until told to quit
-			while (this.run) {
+			while (run) {
+				
+				//	check for global pausing
+				this.checkAdaPause();
+				
+				//	check for individual pausing
+				this.checkPause();
+				
+				//	return right away if we have a shutdown
+				if (!run)
+					return;
 				
 				//	get next due data action
 				DataAction da;
 				synchronized (dataActions) {
-					da = dataActions.getFirstIfDue();
+					da = dataActions.getFirstIfDue(actionThreadCount, this);
 					if (da == null) {
-						this.workFast = false; // deactivate fast working if queue empty or nothing due
+						workFast = false; // deactivate fast working if queue empty or nothing due
 						try {
-							dataActions.wait(dataActions.getNextDueIn());
+							dataActionWaiting.add(this);
+							dataActions.wait(dataActions.getNextDueIn(actionThreadCount));
 						} catch (InterruptedException ie) {}
+						finally {
+							dataActionWaiting.remove(this);
+						}
 						continue;
 					}
 				}
@@ -788,8 +1086,8 @@ public abstract class AsynchronousDataActionHandler {
 					
 					//	mark action as done if not re-scheduled
 					if (da.isInProgress()) {
-						da.setDone();
 						synchronized (dataActions) {
+							da.setDone(this); // need to synchronize update and sorting in case of multiple threads
 							dataActions.cleanupDone();
 							dataActionsById.remove(da.id);
 						}
@@ -807,9 +1105,9 @@ public abstract class AsynchronousDataActionHandler {
 					
 					//	mark action as erroneous if not re-scheduled, and move to end of queue
 					if (da.isInProgress()) {
-						da.setError();
 						synchronized (dataActions) {
-							dataActions.sortUp(true);
+							da.setError(this); // need to synchronize update and sorting in case of multiple threads
+							dataActions.sortUp(actionThreadCount);
 						}
 					}
 					
@@ -826,11 +1124,11 @@ public abstract class AsynchronousDataActionHandler {
 				}
 				
 				//	return right away if we have a shutdown
-				if (!this.run)
+				if (!run)
 					return;
 				
 				//	go straight to next action if we're working false
-				if (this.workFast)
+				if (workFast)
 					continue;
 				
 				//	sleep a little
@@ -843,7 +1141,7 @@ public abstract class AsynchronousDataActionHandler {
 				this.sleepEnd = (this.sleepStart + sleepTime);
 				
 				//	give the others a little time
-				while (this.run && (sleepTime > 0)) try {
+				while (run && (sleepTime > 0)) try {
 					synchronized (this.sleepLock) {
 						this.sleepLock.wait(sleepTime);
 					}
@@ -854,51 +1152,117 @@ public abstract class AsynchronousDataActionHandler {
 				}
 				this.sleepStart = -1;
 				this.sleepEnd = -1;
-//				
-//				//	sleep a little (unless in fast working mode)
-//				if (this.sleepAfterAction && this.run) try {
-//					long sleepTime = (0 + 
-//							1000 + // base sleep
-//							(System.currentTimeMillis() - actionStartTime) + // the time we just occupied the CPU or other resources
-//							0);
-//					logger.logInfo(name + ": sleeping for " + sleepTime + "ms");
-//					Thread.sleep(sleepTime);
-//				} catch (InterruptedException ie) {}
 			}
 		}
 		
-		void setWorkFast(boolean workFast, ComponentActionConsole cac) {
-			if (this.workFast == workFast) {
-				if (workFast)
-					cac.reportError("Already working fast");
-				else cac.reportError("Not working fast");
-			}
-			else {
-				this.workFast = workFast;
-				if (workFast) {
-					cac.reportResult("Fast working activated");
-					this.workNow(false);
-				}
-				else cac.reportResult("Fast working deactivated");
-			}
-		}
-		
-		void workNow(boolean unlessWorkingFast) {
-			if (unlessWorkingFast && this.workFast)
-				return; // not sleeping anyway
-			if (this.sleepStart == -1)
+		private void checkPause() {
+			if (!pause)
 				return;
-			synchronized (this.sleepLock) {
-				this.sleepLock.notify();
+			synchronized (this.pauseLock) {
+				logger.logInfo(this.getName() + " pausing");
+				try {
+					this.pauseLock.wait();
+				} catch (InterruptedException ie) {}
+				logger.logInfo(this.getName() + " un-paused");
 			}
 		}
 		
-		void shutdown() {
-			synchronized (dataActions) {
-				this.run = false;
-				dataActions.clear();
-				dataActions.notify();
-				this.interrupt(); // interrupt any sleeping or waiting
+		private void checkAdaPause() {
+			if (!adaPause)
+				return;
+			synchronized (adaPauseLock) {
+				adaPausedInstances.add(this);
+				logger.logInfo(this.getName() + " pausing");
+				try {
+					adaPauseLock.wait();
+				} catch (InterruptedException ie) {}
+				logger.logInfo(this.getName() + " un-paused");
+				adaPausedInstances.remove(this);
+			}
+		}
+	}
+	
+	private class DataActionThreadTray {
+		final DataActionThread actionThread;
+		final AsynchronousWorkQueue actionQueueMonitor;
+		DataActionThreadTray(DataActionThread actionThread, String name) {
+			this.actionThread = actionThread;
+			
+			//	link up to monitoring
+			this.actionQueueMonitor = new AsynchronousWorkQueue(name) {
+				public String getStatus() {
+					String actionBufferStatus = (dataActions.size() + " actions scheduled, next due in " + dataActions.getNextDueIn(actionThreadCount) + "ms");
+					String actionThreadStatus;
+					if (DataActionThreadTray.this.actionThread.actionStart != -1)
+						actionThreadStatus = ("working since " + (System.currentTimeMillis() - DataActionThreadTray.this.actionThread.actionStart) + "ms");
+					else if (DataActionThreadTray.this.actionThread.sleepStart != -1) {
+						long time = System.currentTimeMillis();
+						actionThreadStatus = ("sleeping since " + (time - DataActionThreadTray.this.actionThread.sleepStart) + "ms");
+						if (time < DataActionThreadTray.this.actionThread.sleepEnd)
+							actionThreadStatus += (", for another " + (DataActionThreadTray.this.actionThread.sleepEnd - time) + "ms");
+					}
+					else if (DataActionThreadTray.this.actionThread.actionEnd != -1)
+						actionThreadStatus = ("last action finished " + (System.currentTimeMillis() - DataActionThreadTray.this.actionThread.actionEnd) + "ms ago");
+					else actionThreadStatus = null;
+					String actionThreadMode = (workFast ? ", FAST" : "");
+					if (adaPause)
+						actionThreadMode += (adaPausedInstances.contains(DataActionThreadTray.this.actionThread) ? ", PAUSED(G)" : ", PAUSING(G)");
+					else if (pause)
+						actionThreadMode += ((DataActionThreadTray.this.actionThread.actionStart == -1) ? ", PAUSED(I)" : ", PAUSING(I)");
+					return (this.name + ": " + actionBufferStatus + actionThreadMode + ((actionThreadStatus == null) ? "" : (", " + actionThreadStatus)));
+				}
+			};
+		}
+	}
+	
+	void setWorkFast(boolean workFast, ComponentActionConsole cac) {
+		if (this.workFast == workFast) {
+			if (workFast)
+				cac.reportError("Already working fast");
+			else cac.reportError("Not working fast");
+		}
+		else {
+			this.workFast = workFast;
+			if (workFast) {
+				cac.reportResult("Fast working activated");
+				this.workNow(false);
+			}
+			else cac.reportResult("Fast working deactivated");
+		}
+	}
+	
+	void workNow(boolean unlessWorkingFast) {
+		if (unlessWorkingFast && this.workFast)
+			return; // not sleeping anyway
+		if (this.actionThreadTrays == null)
+			return;
+		for (int t = 0; t < this.actionThreadTrays.length; t++) {
+			if (this.actionThreadTrays[t].actionThread.sleepStart == -1)
+				continue;
+			synchronized (this.actionThreadTrays[t].actionThread.sleepLock) {
+				this.actionThreadTrays[t].actionThread.sleepLock.notify();
+			}
+		}
+	}
+	
+	void setPause(boolean pause, ComponentActionConsole cac) {
+		if (this.pause == pause) {
+			if (pause)
+				cac.reportError("Already paused");
+			else cac.reportError("Not paused");
+		}
+		else {
+			this.pause = pause;
+			if (pause)
+				cac.reportResult("Paused");
+			else {
+				if (this.actionThreadTrays == null)
+					return;
+				for (int t = 0; t < this.actionThreadTrays.length; t++)
+					synchronized (this.actionThreadTrays[t].actionThread.pauseLock) {
+						this.actionThreadTrays[t].actionThread.pauseLock.notify();
+					}
+				cac.reportResult("Un-paused");
 			}
 		}
 	}
@@ -916,10 +1280,11 @@ public abstract class AsynchronousDataActionHandler {
 		return daId.toString();
 	}
 	
-	private class DataAction {
+	private static class DataAction {
 		final String id;
 		final String dataId;
 		final String[] arguments;
+		DataActionThread thread = null;
 		long due = -1;
 		DataAction(String dataId, String[] arguments) {
 			this(dataId, arguments, -1);
@@ -944,24 +1309,37 @@ public abstract class AsynchronousDataActionHandler {
 		boolean isInProgress() {
 			return (this.due == 0);
 		}
-		void setInProgress() {
-			this.due = 0;
+		void setInProgress(DataActionThread thread) {
+			if (this.thread == null) {
+				this.thread = thread;
+				this.due = 0;
+			}
+			else throw new IllegalStateException("Already in progress in " + this.thread.getName());
 		}
 		boolean isDone() {
 			return (this.due == -1);
 		}
-		void setDone() {
-			this.due = -1;
+		void setDone(DataActionThread thread) {
+			if (this.thread == thread) {
+				this.thread = null;
+				this.due = -1;
+			}
+			else throw new IllegalStateException("Cannot change state from " + thread.getName());
 		}
 		boolean isError() {
 			return (this.due == Long.MAX_VALUE);
 		}
-		void setError() {
-			this.due = Long.MAX_VALUE;
+		void setError(DataActionThread thread) {
+			if (this.thread == thread) {
+				this.thread = null;
+				this.due = Long.MAX_VALUE;
+			}
+			else throw new IllegalStateException("Cannot change state from " + thread.getName());
 		}
 	}
 	
 	private DataActionBuffer dataActions = new DataActionBuffer(8);
+	private Set dataActionWaiting = Collections.synchronizedSet(new HashSet());
 	private HashMap dataActionsById = new HashMap();
 	private LinkedHashMap dataActionErrors = new LinkedHashMap();
 	
@@ -1021,7 +1399,7 @@ public abstract class AsynchronousDataActionHandler {
 				if (shift < 0)
 					this.dataActions.sortDown(false);
 				else if (shift > 0)
-					this.dataActions.sortUp(false);
+					this.dataActions.sortUp(Integer.MAX_VALUE);
 				this.dataActions.notify();
 				persistQuery = "UPDATE " + ACTION_TABLE_NAME + " SET" +
 						" " + DUE_TIME_COLUMN_NAME + " = " + da.due + "" +
@@ -1057,7 +1435,7 @@ public abstract class AsynchronousDataActionHandler {
 		}
 	}
 	
-	private class DataActionBuffer {
+	private static class DataActionBuffer {
 		private DataAction[] actions;
 		private int first = 0;
 		private int last = 0;
@@ -1065,36 +1443,44 @@ public abstract class AsynchronousDataActionHandler {
 			this.actions = new DataAction[capacity];
 		}
 		
-		long getNextDueIn() {
-			//System.out.println("DataActionBuffer.getNextDueIn(): checking action due time, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
+		long getNextDueIn(int maxCheck) {
 			
 			//	anything to return?
 			if (this.first == this.last)
 				return 0;
 			
-			//	time until first action is due (queue is sorted), making sure to stay above 0
-			return Math.max(1, (this.actions[this.first].getDueIn()));
+			//	time until first action is due (queue is sorted, but some might be in progress), making sure to stay above 0
+			for (int a = this.first; a < Math.min(this.last, (this.first + maxCheck)); a++) {
+				if (this.actions[a].thread != null)
+					continue; // this one's in the works
+				return Math.max(1, this.actions[a].getDueIn());
+			}
+			
+			//	nothing pending right now
+			return 0;
 		}
 		
-		DataAction getFirstIfDue() {
-			//System.out.println("DataActionBuffer.getFirstIfDue(): getting due action, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
+		DataAction getFirstIfDue(int maxCheck, DataActionThread forThread) {
 			
 			//	anything to return?
 			if (this.first == this.last)
 				return null;
 			
-			//	first action is due (queue is sorted)
-			if (this.actions[this.first].isDue()) {
-				this.actions[this.first].setInProgress();
-				return this.actions[this.first];
+			//	find first action due (queue is sorted, but some might be in progress)
+			for (int a = this.first; a < Math.min(this.last, (this.first + maxCheck)); a++) {
+				if (this.actions[a].thread != null)
+					continue; // this one's in the works
+				if (this.actions[a].isDue()) {
+					this.actions[a].setInProgress(forThread);
+					return this.actions[a];
+				}
 			}
 			
 			//	nothing due just yet
-			else return null;
+			return null;
 		}
 		
 		int addLast(DataAction da) {
-			//System.out.println("DataActionBuffer.addLast(): adding action, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			
 			//	make sure we have enough room
 			if (this.last == this.actions.length) {
@@ -1117,7 +1503,6 @@ public abstract class AsynchronousDataActionHandler {
 			//	store new action and move out end pointer
 			daPos = this.size();
 			this.actions[this.last++] = da;
-			//System.out.println("DataActionBuffer.addLast(): action added, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			
 			//	nothing to sort on single element
 			if (this.size() < 2)
@@ -1134,14 +1519,12 @@ public abstract class AsynchronousDataActionHandler {
 				}
 				else break;
 			}
-			//System.out.println("DataActionBuffer.addLast(): actions sorted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			
 			//	finally ...
 			return daPos;
 		}
 		
-		void sortUp(boolean movingFirst) {
-			//System.out.println("DataActionBuffer.sortUp(): sorting actions, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
+		void sortUp(int minCheck) {
 			DataAction tda;
 			for (int a = (this.first+1); a < this.last; a++) {
 				if (this.actions[a].due < this.actions[a-1].due) {
@@ -1149,14 +1532,12 @@ public abstract class AsynchronousDataActionHandler {
 					this.actions[a-1] = this.actions[a];
 					this.actions[a] = tda;
 				}
-				else if (movingFirst)
-					break; // first action is modified one, rest is sorted, we're done
+				else if (minCheck < a)
+					break; // leading action is modified one, rest is sorted, we're done
 			}
-			//System.out.println("DataActionBuffer.sortUp(): actions sorted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 		}
 		
 		void sortDown(boolean movingLast) {
-			//System.out.println("DataActionBuffer.sortDown(): sorting actions, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			DataAction tda;
 			for (int a = (this.last-1); a > this.first; a--) {
 				if (this.actions[a].due < this.actions[a-1].due) {
@@ -1167,11 +1548,9 @@ public abstract class AsynchronousDataActionHandler {
 				else if (movingLast)
 					break; // last action is modified one, rest is sorted, we're done
 			}
-			//System.out.println("DataActionBuffer.sortDown(): actions sorted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 		}
 		
 		void cleanupDone() {
-			//System.out.println("DataActionBuffer.cleanupDone(): compacting actions, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 			int ca = this.first;
 			for (int a = this.first; a < this.last; a++) {
 				if (this.actions[a].isDone()) {
@@ -1187,11 +1566,10 @@ public abstract class AsynchronousDataActionHandler {
 				}
 				else ca++;
 			}
-			if ((ca+1) < this.last) {
-				Arrays.fill(this.actions, (ca+1), this.last, null);
-				this.last = (ca+1);
+			if (ca < this.last) {
+				Arrays.fill(this.actions, ca, this.last, null);
+				this.last = ca;
 			}
-			//System.out.println("DataActionBuffer.cleanupDone(): actions compacted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 		}
 		
 		int size() {
@@ -1202,7 +1580,20 @@ public abstract class AsynchronousDataActionHandler {
 			Arrays.fill(this.actions, this.first, this.last, null);
 			this.first = 0;
 			this.last = 0;
-			//System.out.println("DataActionBuffer.clear(): action sorted, first is " + this.first + ", last is " + this.last + ", actions are " + Arrays.toString(this.actions)); // TODO remove this
 		}
 	}
+//	
+//	public static void main(String[] args) throws Exception {
+//		AsynchronousDataActionHandler ada = new AsynchronousDataActionHandler("Test", 3, GoldenGateServerActivityLogger.sysOut) {
+//			protected void performDataAction(String dataId, String[] arguments) throws Exception {
+//				System.out.println(Thread.currentThread().getName() + " handling " + dataId + ", queue size is " + this.dataActions.size());
+//				Thread.sleep(500 + ((int) (500 * Math.random())));
+//			}
+//		};
+//		for (int i = 0; i < 20; i++) {
+//			String id = Gamta.getAnnotationID();
+//			ada.enqueueDataAction(id);
+//		}
+//		ada.start();
+//	}
 }

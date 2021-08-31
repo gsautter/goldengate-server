@@ -1223,7 +1223,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				
 				//	give a little time to the others
 				if (this.keepRunning) try {
-					Thread.sleep(100);
+					Thread.sleep(20);
 				} catch (InterruptedException ie) {}
 			}
 			

@@ -95,10 +95,10 @@ public class SlaveProcessInterface {
 								progressMonitor.setMaxProgress(Integer.parseInt(inLine.substring("MP:".length())));
 						}
 						else if (inLine.startsWith("EST:")) {
-							handleError(inLine.substring("EST:".length()));
+							handleStackTrace(inLine.substring("EST:".length()));
 						}
 						else if (inLine.startsWith("ERR:")) {
-							handleError(inLine.substring("ERR:".length()));
+							handleError(inLine.substring("ERR:".length()), false);
 						}
 						else if (inLine.startsWith("RES:")) {
 							handleResult(inLine.substring("RES:".length()));
@@ -121,7 +121,7 @@ public class SlaveProcessInterface {
 			public void run() {
 				try {
 					for (String errLine; (errLine = errInBr.readLine()) != null;)
-						handleError(errLine);
+						handleError(errLine, true);
 				}
 				catch (IOException e) {
 					e.printStackTrace();
@@ -227,12 +227,28 @@ public class SlaveProcessInterface {
 	protected void finalizeSystemOut() {}
 	
 	/**
+	 * Handle a line of an error stack trace that is not a monitoring command
+	 * handled by this class proper. This method is a mounting point for
+	 * subclasses to extend their slave process communication functionality.
+	 * This default implementation loops through to <code>handleError()</code>,
+	 * indicating the error message was received from the output stream of the
+	 * slave process, and the exception was handled there. Normally, a
+	 * connected master process interface terminates such a stack trace with a
+	 * blank line.
+	 * @param stackTraceLine the stack trace line to handle
+	 */
+	protected void handleStackTrace(String stackTraceLine) {
+		this.handleError(stackTraceLine, false);
+	}
+	
+	/**
 	 * Handle a line of error message that is not a monitoring command handled
 	 * by this class proper. This method is a mounting point for subclasses to
 	 * extend their slave process communication functionality.
 	 * @param error the error message to handle
+	 * @param fromSysErr was the argument error received from the error stream?
 	 */
-	protected void handleError(String error) {}
+	protected void handleError(String error, boolean fromSysErr) {}
 	
 	/**
 	 * Handle the end of the input obtained from the <code>System.err</code>

@@ -8,7 +8,7 @@
 	<target name="zips" depends="backendzip,frontendzip,serverclient,authmanager,datauploaderzip">
 	</target>
 	
-	<target name="backendzip" depends="serverjar,serverconsolejar,serverwatchdogjar,slaveutilsjar,httpsjar,aaajar,namjar,enrjar,elsjar,aepjar,resjar,uaajar,udsjar,upsjar,dtajar,serverextenderjar">
+	<target name="backendzip" depends="serverjar,serverconsolejar,serverwatchdogjar,slaveutilsjar,httpsjar,aaajar,namjar,enrjar,elsjar,pcdjar,adajar,aepjar,resjar,uaajar,udsjar,upsjar,dtajar,serverextenderjar">
 		<delete file="${app.server}"/>
 		<zip destfile="${app.server}">
 			<fileset dir="${file.home}/server"/>
@@ -31,7 +31,6 @@
 			<fileset dir="${build.home}/classes">
 				<include name="**/goldenGateServer/*.class" />
 				<exclude name="**/goldenGateServer/GoldenGateServerConsole*.class" />
-				<include name="**/goldenGateServer/util/*.class" />
 				<include name="**/goldenGateServer/util/*.class" />
 			</fileset>
 			<fileset dir="${src.home}">
@@ -153,6 +152,19 @@
 		</jar>
 	</target>
 	
+	<target name="pcdjar">
+		<delete file="${jar.pcd}" />
+		<jar destfile="${jar.pcd}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/pcd/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/pcd/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
 	<target name="namjar">
 		<delete file="${jar.nam}" />
 		<jar destfile="${jar.nam}" manifest="${file.home}/MANIFEST.components.MF">
@@ -174,6 +186,19 @@
 			</fileset>
 			<fileset dir="${src.home}">
 				<include name="**/goldenGateServer/aep/*.java" />
+			</fileset>
+			<fileset dir="." includes="LICENSE.txt"/>
+		</jar>
+	</target>
+	
+	<target name="adajar">
+		<delete file="${jar.ada}" />
+		<jar destfile="${jar.ada}" manifest="${file.home}/MANIFEST.components.MF">
+			<fileset dir="${build.home}/classes">
+				<include name="**/goldenGateServer/ada/*.class" />
+			</fileset>
+			<fileset dir="${src.home}">
+				<include name="**/goldenGateServer/ada/*.java" />
 			</fileset>
 			<fileset dir="." includes="LICENSE.txt"/>
 		</jar>

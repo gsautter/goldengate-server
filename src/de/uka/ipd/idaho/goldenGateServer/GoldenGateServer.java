@@ -37,6 +37,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.lang.ref.WeakReference;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -52,6 +53,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
@@ -81,7 +83,6 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 	
 	private static ComponentHost serverComponentHost;
 	private static GoldenGateServerComponent[] serverComponents;
-//	private static String[] serverComponentLoadErrors;
 	private static ComponentLoadError[] serverComponentLoadErrors;
 	
 	private static int networkInterfaceTimeout = defaultNetworkInterfaceTimeout;
@@ -108,12 +109,21 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 	private static int logLevelConsole = GoldenGateServerActivityLogger.LOG_LEVEL_INFO;
 	private static int logLevelBackground = GoldenGateServerActivityLogger.LOG_LEVEL_INFO;
 	
-	private static PrintStream logOut;
+//	private static PrintStream logOut;
+	private static LogStream logOut;
+	private static AsynchronousWorkQueue logQueue;
+	private static LogStream consoleOut;
+	private static AsynchronousWorkQueue consoleQueue;
 	private static PrintStream logErr;
 	private static boolean formatLogs = false;
+//	private static int memoryLogInterval = -1;
 	
 	//	network action listeners
 	private static ArrayList networkActionListeners = null;
+	
+	//	startup memory stats
+	private static long startupMaxMemory;
+	private static long startupFreeMemory;
 	
 	/**	
 	 * @return an IoProvider for accessing the SRS's database
@@ -201,6 +211,15 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 				System.getProperties().put("proxyPort", proxyPort);
 			System.out.println(" - www proxy configured");
 		}
+//		
+//		//	read memory log interval
+//		try {
+//			memoryLogInterval = Integer.parseInt(settings.getSetting("memoryLogInterval", ("" + memoryLogInterval)));
+//			System.out.println("   - memory log interval is " + memoryLogInterval);
+//		}
+//		catch (NumberFormatException nfe) {
+//			System.out.println("   - could not read memory log interval '" + settings.getSetting("memoryLogInterval", ("" + memoryLogInterval)) + "'");
+//		}
 		
 		//	hold on to original System.out and System.err
 		final PrintStream systemOut = System.out;
@@ -223,10 +242,12 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 				System.out.println("   - could not read network console port, using default " + ncPort);
 			}
 			console = new SocketConsole(ncPort, settings.getSetting("networkConsolePassword", "GG"), Integer.parseInt(settings.getSetting("networkConsoleTimeout", ("" + defaultNetworkConsoleTimeout))));
+			consoleOut = ((SocketConsole) console).resultOut;
 			System.out.println("   - network console created");
 			
 			//	log to system output streams (wrapper writes them to file)
-			logOut = systemOut;
+//			logOut = systemOut;
+			logOut = new LogStream(systemOut);
 			logErr = systemErr;
 		}
 		else {
@@ -249,7 +270,8 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			OutputStream systemErrStream = new BufferedOutputStream(new FileOutputStream(systemErrFile));
 			
 			//	log to dedicated files (with auto-flushing, we want these log files up to date because the beef usually is at the end)
-			logOut = new PrintStream(systemOutStream, true);
+//			logOut = new PrintStream(systemOutStream, true);
+			logOut = new LogStream(new PrintStream(systemOutStream, true));
 			logErr = new PrintStream(systemErrStream, true);
 			System.out.println("   - log files created");
 			
@@ -268,6 +290,19 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			System.out.println("   - System.err forked");
 		}
 		
+		//	set up monitoring for log writers
+		logQueue = new AsynchronousWorkQueue("LogWriter") {
+			public String getStatus() {
+				return (this.name + ": got " + logOut.bufferCount() + " buffers with total of " + logOut.bufferLevel() + " lines to write");
+			}
+		};
+		if (consoleOut != null)
+			consoleQueue = new AsynchronousWorkQueue("ConsoleWriter") {
+				public String getStatus() {
+					return (this.name + ": got " + consoleOut.bufferCount() + " buffers with total of " + consoleOut.bufferLevel() + " lines to write");
+				}
+			};
+		
 		//	read log and console output levels, as well as log formatting flag
 		outLevelNetwork = readOutputLevel(settings, "console", "network", outLevelNetwork);
 		outLevelConsole = readOutputLevel(settings, "console", "console", outLevelConsole);
@@ -282,25 +317,25 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		start();
 		System.out.println(" - componet server started");
 		
-		//	hold on to startup version of System.out to keep behavior logging consistent
+		//	hold on to startup version of System.out to keep logging behavior consistent
 		PrintStream startSystemOut = System.out;
 		
 		//	redirect System.out and System.err to logging methods
 		System.setOut(new RedirectPrintStream() {
-			void redirectLine(String s) {
+			void redirectLine(String line) {
 				Thread ct = Thread.currentThread();
 				if (ct instanceof GoldenGateServerActivityLogger)
-					((GoldenGateServerActivityLogger) ct).logInfo(s);
-				else logBackground(s, GoldenGateServerActivityLogger.LOG_LEVEL_INFO);
+					((GoldenGateServerActivityLogger) ct).logInfo(line);
+				else logBackground(line, GoldenGateServerActivityLogger.LOG_LEVEL_INFO);
 			}
 		});
 		startSystemOut.println("   - System.out redirected");
 		System.setErr(new RedirectPrintStream() {
-			void redirectLine(String s) {
+			void redirectLine(String line) {
 				Thread ct = Thread.currentThread();
 				if (ct instanceof GoldenGateServerActivityLogger)
-					((GoldenGateServerActivityLogger) ct).logError(s);
-				else logBackground(s, GoldenGateServerActivityLogger.LOG_LEVEL_ERROR);
+					((GoldenGateServerActivityLogger) ct).logError(line);
+				else logBackground(line, GoldenGateServerActivityLogger.LOG_LEVEL_ERROR);
 			}
 		});
 		startSystemOut.println("   - System.err redirected");
@@ -330,6 +365,11 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 				GoldenGateServer.stop();
 				System.out.println(" - component server stopped");
 				
+				//	disable log monitoring
+				logQueue.dispose();
+				if (consoleQueue != null)
+					consoleQueue.dispose();
+				
 				//	close log streams
 				logErr.flush();
 				logErr.close();
@@ -341,6 +381,8 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		});
 		startSystemOut.println(" - shutdown hook registered");
 		
+		startupMaxMemory = Runtime.getRuntime().maxMemory();
+		startupFreeMemory = Runtime.getRuntime().freeMemory();
 		startSystemOut.println("GoldenGATE Server startup complete");
 	}
 	
@@ -384,8 +426,6 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		catch (Throwable t) {
 			System.out.println(t.getClass().getName() + " (" + t.getMessage() + ") while initializing " + ((loadedServerComponents[c] == null) ? "server component" : loadedServerComponents[c].getClass().getName()));
 			t.printStackTrace(System.out);
-//			if (loadedServerComponents[c] != null)
-//				serverComponentLoadErrorList.add(loadedServerComponents[c].getLetterCode() + ": '" + t.getMessage() + "' while initializing");
 			serverComponentLoadErrorList.add(new ComponentLoadError(loadedServerComponents[c].getClass().getName(), t, "initialization"));
 		}
 		
@@ -403,8 +443,6 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		catch (Throwable t) {
 			System.out.println(t.getClass().getName() + " (" + t.getMessage() + ") while linking " + ((loadedServerComponents[c] == null) ? "server component" : loadedServerComponents[c].getClass().getName()));
 			t.printStackTrace(System.out);
-//			if (loadedServerComponents[c] != null)
-//				serverComponentLoadErrorList.add(loadedServerComponents[c].getLetterCode() + ": '" + t.getMessage() + "' while linking");
 			serverComponentLoadErrorList.add(new ComponentLoadError(loadedServerComponents[c].getClass().getName(), t, "linking"));
 			GoldenGateServerComponentRegistry.unregisterServerComponent(loadedServerComponents[c]);
 		}
@@ -423,8 +461,6 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		catch (Throwable t) {
 			System.out.println(t.getClass().getName() + " (" + t.getMessage() + ") while linked initializing " + ((loadedServerComponents[c] == null) ? "server component" : loadedServerComponents[c].getClass().getName()));
 			t.printStackTrace(System.out);
-//			if (loadedServerComponents[c] != null)
-//				serverComponentLoadErrorList.add(loadedServerComponents[c].getLetterCode() + ": '" + t.getMessage() + "' while linked initializing");
 			serverComponentLoadErrorList.add(new ComponentLoadError(loadedServerComponents[c].getClass().getName(), t, "linked-initialization"));
 			GoldenGateServerComponentRegistry.unregisterServerComponent(loadedServerComponents[c]);
 		}
@@ -433,12 +469,12 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		serverComponents = ((GoldenGateServerComponent[]) serverComponentList.toArray(new GoldenGateServerComponent[serverComponentList.size()]));
 		
 		//	store errors
-//		serverComponentLoadErrors = ((String[]) serverComponentLoadErrorList.toArray(new String[serverComponentLoadErrorList.size()]));
 		serverComponentLoadErrors = ((ComponentLoadError[]) serverComponentLoadErrorList.toArray(new ComponentLoadError[serverComponentLoadErrorList.size()]));
 		
 		//	obtain local console actions
 		ComponentActionConsole[] localConsoleActions = getLocalConsoleActions();
-		Map localActionSet = Collections.synchronizedMap(new HashMap());
+//		Map localActionSet = Collections.synchronizedMap(new HashMap());
+		Map localActionSet = Collections.synchronizedMap(new TreeMap(String.CASE_INSENSITIVE_ORDER));
 		for (int a = 0; a < localConsoleActions.length; a++)
 			localActionSet.put(localConsoleActions[a].getActionCommand(), localConsoleActions[a]);
 		if (localActionSet.size() != 0)
@@ -456,7 +492,8 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			}
 			
 			//	handle individual actions
-			Map consoleActionSet = Collections.synchronizedMap(new HashMap());
+//			Map consoleActionSet = Collections.synchronizedMap(new HashMap());
+			Map consoleActionSet = Collections.synchronizedMap(new TreeMap(String.CASE_INSENSITIVE_ORDER));
 			for (int a = 0; a < componentActions.length; a++) {
 				
 				//	collect network actions in prefix map
@@ -522,7 +559,7 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		public boolean isClientRequest() {
 			return (Thread.currentThread() instanceof ServiceThread);
 		}
-
+		
 		public GoldenGateServerComponent getServerComponent(String className) {
 			return GoldenGateServerComponentRegistry.getServerComponent(className);
 		}
@@ -861,6 +898,7 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 				//	clean up
 				finally {
 					this.request = null;
+//					logOut.shrinkBuffer();
 				}
 				
 				//	re-enqueue if not shut down ...
@@ -1019,12 +1057,13 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			//	create time prefix
 			long time = System.currentTimeMillis();
 			int runTime = ((int) ((time - this.activityLogStart) & 0x7FFFFFFF));
+			long threadId = Thread.currentThread().getId();
 			
 			//	before debug log timeout, store message if we can
 			if (time < this.activityLogEnd) {
 				if (this.activityLogMessages == null)
-					logNetwork((runTime + "ms: " + message), GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG);
-				else this.activityLogMessages.add(runTime + "ms: " + message);
+					logNetwork((threadId + "/" + runTime + "ms: " + message), GoldenGateServerActivityLogger.LOG_LEVEL_DEBUG);
+				else this.activityLogMessages.add(threadId + "/" + runTime + "ms: " + message);
 				return;
 			}
 			
@@ -1036,7 +1075,7 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			}
 			
 			//	this message now has warning level
-			logNetwork((runTime + "ms: " + message), GoldenGateServerActivityLogger.LOG_LEVEL_WARNING);
+			logNetwork((threadId + "/" + runTime + "ms: " + message), GoldenGateServerActivityLogger.LOG_LEVEL_WARNING);
 		}
 	}
 	
@@ -1125,10 +1164,10 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		}
 		void startServiceAction(ServiceAction sa) throws InterruptedException {
 			sa = this.doStartServiceAction(sa);
+			//	we need to release the monitor on the coordinator before suspending on the one of the action
 			if (sa != null)
 				sa.suspend();
 			notifyNetworkActionStarted(this.actionCommand, ((sa == null) ? -1 : ((int) sa.waited)));
-			//	we need to release the monitor on the coordinator before suspending on the one of the action
 		}
 		private synchronized ServiceAction doStartServiceAction(ServiceAction sa) throws InterruptedException {
 			activeServiceActions.add(sa);
@@ -1145,9 +1184,9 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			if (isFinished)
 				notifyNetworkActionFinished(this.actionCommand, ((int) sa.waited), ((int) (System.currentTimeMillis() - sa.started)));
 			sa = this.doFinishServiceAction(sa, isFinished);
+			//	we need to release the monitor on the coordinator before acquiring the one on the action
 			if (sa != null)
 				sa.resume();
-			//	we need to release the monitor on the coordinator before acquiring the one on the action
 		}
 		private synchronized ServiceAction doFinishServiceAction(ServiceAction sa, boolean isFinished) {
 			activeServiceActions.remove(sa);
@@ -1195,6 +1234,8 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 	private static final String KILL_THREAD_COMMAND = "kill";
 	private static final String WAKE_THREAD_COMMAND = "wake";
 	private static final String LIST_QUEUES_COMMAND = "queues";
+	private static final String SHOW_MEMORY_COMMAND = "memory";
+	private static final String SHOW_LOGGERS_COMMAND = "loggers";
 	private static final String SET_COMMAND = "set";
 	private static final String SET_LOG_LEVEL_COMMAND = "setLogLevel";
 	private static final String SET_LOG_FORMAT_COMMAND = "setLogFormat";
@@ -1551,6 +1592,63 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		};
 		cal.add(ca);
 		
+		//	show memory status
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return SHOW_MEMORY_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						(SHOW_MEMORY_COMMAND + " <runGarbageCollection>"),
+						"Show memory usage:",
+						"- <runGarbageCollection>: set to '-gc' to run garbage collection beforehand"
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if ((arguments.length == 0) || ((arguments.length == 1) && "-gc".equals(arguments[0]))) {
+					if ((arguments.length == 1) && "-gc".equals(arguments[0]))
+						System.gc();
+					long sMaxMem = (startupMaxMemory / (1024 * 1024));
+					long sFreeMem = (startupFreeMemory / (1024 * 1024));
+					this.reportResult("Startup memory usage: " + sFreeMem + " free of " + sMaxMem + " MB total (" + startupFreeMemory + " of " + startupMaxMemory + " bytes)");
+					long maxMemory = Runtime.getRuntime().maxMemory();
+					long freeMemory = Runtime.getRuntime().freeMemory();
+					long maxMem = (maxMemory / (1024 * 1024));
+					long freeMem = (freeMemory / (1024 * 1024));
+					this.reportResult("Current memory usage: " + freeMem + " free of " + maxMem + " MB total (" + freeMemory + " of " + maxMemory + " bytes)");
+				}
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at more the run-garbage-collection arguments.");
+			}
+		};
+		cal.add(ca);
+		
+		//	show memory status
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return SHOW_LOGGERS_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						(SHOW_LOGGERS_COMMAND + " <shrinkBuffers>"),
+						"Show log buffer status:",
+						"- <shrinkBuffers>: set to '-s' to shrink all buffers"
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if ((arguments.length == 0) || ((arguments.length == 1) && "-s".equals(arguments[0]))) {
+					logOut.showStatus(this);
+					if (consoleOut != null)
+						consoleOut.showStatus(this);
+//					this.reportResult("Startup memory usage: " + sFreeMem + " free of " + sMaxMem + " MB total (" + startupFreeMemory + " of " + startupMaxMemory + " bytes)");
+//					this.reportResult("Current memory usage: " + freeMem + " free of " + maxMem + " MB total (" + freeMemory + " of " + maxMemory + " bytes)");
+				}
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at more the run-garbage-collection arguments.");
+			}
+		};
+		cal.add(ca);
+		
 		//	list and update environment properties
 		ca = new ComponentActionConsole() {
 			public String getActionCommand() {
@@ -1858,8 +1956,6 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 					output.write(serverComponentLoadErrors.length + " errors occurred while loading server components:");
 					output.newLine();
 					for (int c = 0; c < serverComponentLoadErrors.length; c++) {
-//						output.write("  " + serverComponentLoadErrors[c]);
-//						output.newLine();
 						output.write("  " + serverComponentLoadErrors[c].phase + " of " + serverComponentLoadErrors[c].className + ":");
 						output.newLine();
 						output.write("    " + serverComponentLoadErrors[c].error.getClass().getName() + ": " + serverComponentLoadErrors[c].error.getMessage());
@@ -1954,7 +2050,8 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 		return ((ComponentActionNetwork[]) cal.toArray(new ComponentActionNetwork[cal.size()]));
 	}
 	
-	private static Map componentActionSetsByLetterCode = Collections.synchronizedMap(new HashMap());
+//	private static Map componentActionSetsByLetterCode = Collections.synchronizedMap(new HashMap());
+	private static Map componentActionSetsByLetterCode = Collections.synchronizedMap(new TreeMap(String.CASE_INSENSITIVE_ORDER));
 	
 	private static abstract class ComponentServerConsole extends LoggingThread {
 		
@@ -2250,6 +2347,7 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 	
 	private static class SocketConsole extends ComponentServerConsole {
 		private static final Object consoleOutLock = new Object();
+		private LogStream resultOut;
 		
 		private int port;
 		private String password;
@@ -2262,6 +2360,11 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			this.port = port;
 			this.password = password;
 			this.timeout = timeout;
+			this.resultOut = new LogStream(new RedirectPrintStream() {
+				void redirectLine(String line) {
+					doSend(line);
+				}
+			});
 		}
 		
 		void executeCommand(String[] commandTokens) throws Exception {
@@ -2270,35 +2373,61 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 			else super.executeCommand(commandTokens);
 		}
 		
+		//	TODOne get rid of locking here, this is called by many threads
 		void send(String message, int level, char source) {
 			if (this.out == null)
 				return;
-			synchronized (consoleOutLock) {
-				if (this.out == null)
-					return; // re-check after getting monitor on lock (under heavy load, stream can get lost while waiting on monitor)
-				char l;
-				if (level == LOG_LEVEL_DEBUG)
-					l = 'D';
-				else if (level == LOG_LEVEL_INFO)
-					l = 'I';
-				else if (level == LOG_LEVEL_WARNING)
-					l = 'W';
-				else if (level == LOG_LEVEL_ERROR)
-					l = 'E';
-				else l = 'R'; // result
-				this.out.println("" + l + source + "::" + message);
-			}
+//			synchronized (consoleOutLock) {
+//				if (this.out == null)
+//					return; // re-check after getting monitor on lock (under heavy load, stream can get lost while waiting on monitor)
+//				char l;
+//				if (level == LOG_LEVEL_DEBUG)
+//					l = 'D';
+//				else if (level == LOG_LEVEL_INFO)
+//					l = 'I';
+//				else if (level == LOG_LEVEL_WARNING)
+//					l = 'W';
+//				else if (level == LOG_LEVEL_ERROR)
+//					l = 'E';
+//				else l = 'R'; // result
+//				this.out.println("" + l + source + "::" + message);
+//			}
+			char l;
+			if (level == LOG_LEVEL_DEBUG)
+				l = 'D';
+			else if (level == LOG_LEVEL_INFO)
+				l = 'I';
+			else if (level == LOG_LEVEL_WARNING)
+				l = 'W';
+			else if (level == LOG_LEVEL_ERROR)
+				l = 'E';
+			else l = 'R'; // result
+			this.resultOut.println("" + l + source + "::" + message); // no need to lock, buffering happens per thread
 		}
 		
+		//	TODOne get rid of locking here, this is called by many threads
 		void send(Throwable error, char source) {
 			if (this.out == null)
 				return;
+//			synchronized (consoleOutLock) {
+//				if (this.out == null)
+//					return; // re-check after getting monitor on lock (under heavy load, stream can get lost while waiting on monitor)
+//				this.out.println("" + 'T' + source + "::");
+//				error.printStackTrace(this.out);
+//				this.out.println("::T");
+//			}
+			this.resultOut.println("" + 'T' + source + "::");
+			error.printStackTrace(this.resultOut);
+			this.resultOut.println("::T"); // no need to lock, buffering happens per thread
+		}
+		
+		//	TODOne synchronize here instead, this is only called by output writer thread
+		void doSend(String line) {
+			if (this.out == null)
+				return;
 			synchronized (consoleOutLock) {
-				if (this.out == null)
-					return; // re-check after getting monitor on lock (under heavy load, stream can get lost while waiting on monitor)
-				this.out.println("" + 'T' + source + "::");
-				error.printStackTrace(this.out);
-				this.out.println("::T");
+				if (this.out != null) // re-check after getting monitor on lock (under heavy load, stream can get lost while waiting on monitor)
+					this.out.println(line);
 			}
 		}
 		
@@ -2318,6 +2447,8 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 				this.activeThread = null;
 				as.close();
 			} catch (IOException ioe) {}
+			
+			this.resultOut.close();
 		}
 		
 		public void run() {
@@ -2421,7 +2552,7 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 						SocketConsole.this.log(message, messageLogLevel);
 					}
 					public void run() {
-						while ((SocketConsole.this.activeSocket != null) && (SocketConsole.this.activeThread == this)) try {
+						while ((SocketConsole.this.activeSocket != null) && (SocketConsole.this.activeThread == this) /* terminate soon as replaced */) try {
 							String commandString;
 							try {
 								commandString = commandReader.readLine();
@@ -2465,7 +2596,9 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 							else {
 								commandString = commandString.trim();
 								try {
+									resultOut.startConsoleBreak();
 									SocketConsole.this.executeCommand(commandString);
+									resultOut.endConsoleBreak();
 								}
 								catch (Throwable t) {
 									System.out.println("Error executing network console command: " + t.getMessage());
@@ -2482,6 +2615,7 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 						}
 					}
 				};
+				this.resultOut.setConsoleThread(this.activeThread);
 				this.activeThread.start();
 			}
 			catch (Exception e) {
@@ -2489,112 +2623,6 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 				e.printStackTrace(System.out);
 			}
 		}
-//		public void run() {
-//			try {
-//				ServerSocket ss = new ServerSocket();
-//				ss.setReuseAddress(true);
-//				ss.bind(new InetSocketAddress(this.port));
-//				this.serverSocket = ss;
-//			}
-//			catch (Exception e) {
-//				System.out.println("Error opening network console: " + e.getMessage());
-//				return;
-//			}
-//			
-//			while (this.serverSocket != null) try {
-//				BufferedReader commandReader;
-//				PrintStream sOut;
-//				
-//				//	wait for incoming connections
-//				Socket as = this.serverSocket.accept();
-//				System.out.println("Network console connection from " + as.getInetAddress().getHostAddress() + ", local is " + InetAddress.getLocalHost().getHostAddress());
-//				if (as.getInetAddress().getHostAddress().equals("127.0.0.1") || as.getInetAddress().getHostAddress().equals(InetAddress.getLocalHost().getHostAddress())) {
-//					System.out.println("Network console connected.");
-//					sOut = new PrintStream(as.getOutputStream(), true);
-//					
-//					commandReader = new BufferedReader(new InputStreamReader(as.getInputStream()));
-//					as.setSoTimeout(500); // wait half a second for password, no longer
-//					String password = commandReader.readLine();
-//					if (this.password.equals(password)) {
-//						sOut.println("WELCOME");
-//					}
-//					else {
-//						System.out.println("Network console authentication failed.");
-//						sOut.println("Authentication failed.");
-//						as.close();
-//						throw new IOException("Network console authentication failed");
-//					}
-//				}
-//				else {
-//					as.close();
-//					throw new IOException("Remote network console connection not allowed");
-//				}
-//				
-//				this.activeSocket = as;
-//				this.activeSocket.setSoTimeout(this.timeout);
-//				synchronized (consoleOutLock) {
-//					this.out = sOut;
-//				}
-//				
-//				while (this.activeSocket != null) try {
-//					
-//					String commandString;
-//					try {
-//						commandString = commandReader.readLine();
-//					}
-//					catch (Exception e) {
-//						commandString = null;
-//					}
-//					
-//					//	client logout
-//					if ("GOODBYE".equals(commandString)) {
-//						synchronized (consoleOutLock) {
-//							this.out.println("GOODBYE");
-//							this.out = null;
-//						}
-//						this.activeSocket.close();
-//						this.activeSocket = null;
-//					}
-//					
-//					//	server shutdown
-//					else if (this.activeSocket == null) {
-//						//	ignore it here, it's done in close()
-//					}
-//					
-//					//	client connection lost
-//					else if (commandString == null) {
-//						synchronized (consoleOutLock) {
-//							this.out = null;
-//						}
-//						this.activeSocket.close();
-//						this.activeSocket = null;
-//					}
-//					
-//					//	regular command
-//					else {
-//						commandString = commandString.trim();
-//						try {
-//							this.executeCommand(commandString);
-//						}
-//						catch (Throwable t) {
-//							System.out.println("Error executing network console command: " + t.getMessage());
-//							t.printStackTrace(System.out);
-//						}
-//						synchronized (consoleOutLock) {
-//							this.out.println("COMMAND_DONE");
-//						}
-//					}
-//				}
-//				catch (Exception e) {
-//					System.out.println("Error reading network console command: " + e.getMessage());
-//					e.printStackTrace(System.out);
-//				}
-//			}
-//			catch (Exception e) {
-//				System.out.println("Error accepting network console connection: " + e.getMessage());
-//				e.printStackTrace(System.out);
-//			}
-//		}
 	}
 	
 	private static abstract class ForkPrintStream extends PrintStream {
@@ -2849,6 +2877,389 @@ public class GoldenGateServer implements GoldenGateServerConstants, GoldenGateSe
 //		public PrintStream format(Locale l, String format, Object... args) {
 //			return super.format(l, format, args);
 //		}
-		abstract void redirectLine(String s);
+		abstract void redirectLine(String line);
 	}
+	
+	private static class LogStream extends RedirectPrintStream {
+		PrintStream logOut; // this is where we actually flush to
+		LogWriter logWriter; // this is the thread responsible for flushing
+		LogStream(PrintStream logOut) {
+			this.logOut = logOut;
+			this.logWriter = new LogWriter();
+			this.logWriter.start();
+		}
+		public void close() {
+			super.close();
+			PrintStream out = this.logOut;
+			this.logOut = null; // tells writer thread to exit
+			this.flushBuffers(out); // flush whatever might be left
+			out.close(); // close underlying stream
+		}
+		
+		Thread consoleThread = null; // console thread, to facilitate writing console action results directly
+		void setConsoleThread(Thread consoleThread) {
+			this.consoleThread = consoleThread;
+		}
+		
+		final Object consoleBreakLock = new Object();
+		boolean consoleBreak = false;
+		void startConsoleBreak() {
+			this.consoleBreak = true;
+		}
+		void endConsoleBreak() {
+			this.consoleBreak = false;
+			synchronized (this.consoleBreakLock) {
+				this.consoleBreakLock.notify();
+			}
+		}
+		
+		//	this gets called by all the writing threads
+		private ThreadLocal threadBuffer = new ThreadLocal();
+		void redirectLine(String line) {
+			Thread ct = Thread.currentThread();
+			if (ct == this.logWriter) /* no buffering for log writer proper */ {
+				this.logOut.println(line);
+				return;
+			}
+			if (ct == this.consoleThread) /* no buffering for console response writer proper in console mode */ {
+				this.logOut.println(line);
+				return;
+			}
+			LogBuffer lb = ((LogBuffer) this.threadBuffer.get());
+			if (lb == null) {
+				lb = new LogBuffer();
+				this.addBuffer(lb);
+				this.threadBuffer.set(lb);
+			}
+			lb.storeLine(line);
+		}
+//		void shrinkBuffer() {
+//			LogBuffer lb = ((LogBuffer) this.threadBuffer.get());
+//			if (lb != null)
+//				lb.shrinkCapacity();
+//		}
+		
+		/* show buffers status in console (this is intentionally unsynchronized
+		 * to prevent any competition or interference, at calculated risk of
+		 * sometimes seeing somewhat inaccurate numbers) */
+		void showStatus(ComponentActionConsole cac) {
+			int count = 0;
+			int sizeTotal = 0;
+			int sizeMin = Integer.MAX_VALUE;
+			int sizeMax = 0;
+			int level = 0;
+			for (int b = 0; b < this.bufferCount; b++) {
+				LogBuffer buf = this.buffers[b];
+				if (buf == null)
+					continue; // can happen if logger thread is cleaning up
+				count++;
+				int size = buf.size();
+				sizeTotal += size;
+				sizeMin = Math.min(sizeMin, size);
+				sizeMax = Math.max(sizeMax, size);
+				level += buf.level();
+			}
+			if (count == 0)
+				cac.reportResult(((this.consoleThread == null) ? "LogOut" : "ConsoleOut") + ": got no buffers thus far");
+			else cac.reportResult(((this.consoleThread == null) ? "LogOut" : "ConsoleOut") + ": got " + count + " buffers holding " + level + " lines, average capacity is " + (sizeTotal / count) + " [" + sizeMin + "," + sizeMax + "]");
+		}
+		
+		//	this thread does all the actual writing, except the final flushing
+		private class LogWriter extends Thread {
+			LogWriter() {
+				super("LogWriter");
+			}
+			public void run() {
+				synchronized (this) {
+					this.notify(); // wake up whoever started us
+				}
+				PrintStream out;
+				do {
+					out = logOut; // need to have local copy to prevent null pointer exceptions on shutdown
+					if (out != null) {
+						flushBuffers(out);
+//						showMemoryStatus(out, System.currentTimeMillis());
+						try {
+							if (consoleBreak) {
+								synchronized (consoleBreakLock) {
+									if (consoleBreak) // need to check again to not miss notify under any circumstance
+										consoleBreakLock.wait(250); // wait at most quarter second ...
+								}
+								consoleBreak = false; // ... and not for all too long
+							}
+							else sleep(50);
+						} catch (InterruptedException ie) {}
+					}
+				}
+				while (out != null);
+			}
+			public synchronized void start() {
+				super.start();
+				try {
+					this.wait(); // wait for thread to start running
+				} catch (InterruptedException ie) {}
+			}
+		}
+//		
+//		//	memory monitoring (simply most convenient to put here)
+//		long memoryLogDue = ((memoryLogInterval < 1) ? Long.MAX_VALUE : (System.currentTimeMillis() + (1000 * memoryLogInterval))); // simply initialize to creation time
+//		private WeakReference gcIndicatorWeak = null;
+//		long lastGcRunWeak = System.currentTimeMillis(); // simply initialize to creation time
+//		private SoftReference gcIndicatorSoft = null;
+//		long lastGcRunSoft = System.currentTimeMillis(); // simply initialize to creation time
+//		private static class GcIndicator {
+//			final LogStream parent;
+//			final boolean weak;
+//			GcIndicator(LogStream parent, boolean weak) {
+//				this.parent = parent;
+//				this.weak = weak;
+//			}
+//			protected void finalize() throws Throwable {
+//				this.parent.notifyGcRunning(this.weak);
+//			}
+//		}
+//		void notifyGcRunning(boolean weak) {
+//			if (weak) {
+//				this.lastGcRunWeak = System.currentTimeMillis();
+//				this.gcIndicatorWeak = null;
+//			}
+//			else {
+//				this.lastGcRunSoft = System.currentTimeMillis();
+//				this.gcIndicatorSoft = null;
+//			}
+//		}
+//		void showMemoryStatus(PrintStream out, long time) {
+//			if (time < this.memoryLogDue)
+//				return;
+//			if (this.consoleThread != null)
+//				return;
+//			long maxMemory = Runtime.getRuntime().maxMemory();
+//			long freeMemory = Runtime.getRuntime().freeMemory();
+//			long maxMem = (maxMemory / (1024 * 1024));
+//			long freeMem = (freeMemory / (1024 * 1024));
+//			out.println("=== MEMORY USAGE: " + freeMem + " MB free of " + maxMem + " MB total (" + freeMemory + " of " + maxMemory + " bytes), last GC run " + (time - this.lastGcRunWeak) + "/" + (time - this.lastGcRunSoft) + "ms ago (weak/soft)");
+//			this.memoryLogDue += (1000 * memoryLogInterval);
+//			if (this.gcIndicatorWeak == null)
+//				this.gcIndicatorWeak = new WeakReference(new GcIndicator(this, true));
+//			if (this.gcIndicatorSoft == null)
+//				this.gcIndicatorSoft = new SoftReference(new GcIndicator(this, false));
+//		}
+		
+		//	this gets called exclusively by output writer thread
+		private WeakReference gcIndicator = new WeakReference(new Object());
+		private long lastWritten = System.currentTimeMillis(); // simply initialize to creation time
+		private long freeMemoryLastWritten;
+		void flushBuffers(PrintStream out) {
+			long time = System.currentTimeMillis();
+			if (this.gcIndicator.get() == null) {
+				long freeMemory = Runtime.getRuntime().freeMemory();
+				long freeMemLastWritten = (this.freeMemoryLastWritten / (1024 * 1024));
+				long freeMem = (freeMemory / (1024 * 1024));
+				out.println("=== GC HANGUP === (" + (time - this.lastWritten) + "ms) ===");
+				out.println("=== memory usage: " + freeMem + " MB free now, " + freeMemLastWritten + " MB free before (" + freeMemory + "/" + this.freeMemoryLastWritten + " bytes) ===");
+				this.gcIndicator = new WeakReference(new Object());
+			}
+			while (this.flushNextBuffer(out, time)) { /* keep flushing until empty */ }
+			this.lastWritten = time;
+			this.freeMemoryLastWritten = Runtime.getRuntime().freeMemory();
+			this.cleanBuffers(out); // clean up buffers of terminated owners
+		}
+		private boolean flushNextBuffer(PrintStream out, long time) {
+			long minTime = Long.MAX_VALUE;
+			LogBuffer minBuffer = null;
+			synchronized (this) {
+				for (int b = 0; b < this.bufferCount; b++) {
+					long bTime = this.buffers[b].nextTime();
+					if (bTime < minTime) {
+						minTime = bTime;
+						minBuffer = this.buffers[b];
+					}
+				}
+			}
+			if (minBuffer == null)
+				return false;
+			while (minBuffer.nextTime() <= minTime)
+				out.println(minBuffer.nextLine());
+			minBuffer.shrinkCapacity();
+			return true;
+		}
+		
+		//	infrastructure holding log buffers for access on output (minimal version of array based list)
+		private LogBuffer[] buffers = new LogBuffer[128];
+		private int bufferCount = 0;
+		private synchronized void addBuffer(LogBuffer buffer) {
+			if (this.bufferCount == this.buffers.length) {
+				LogBuffer[] cBuffers = new LogBuffer[this.buffers.length * 2];
+				System.arraycopy(this.buffers, 0, cBuffers, 0, this.buffers.length);
+				this.buffers = cBuffers;
+			}
+			this.buffers[this.bufferCount++] = buffer;
+		}
+		private synchronized void cleanBuffers(PrintStream out) {
+			int cleaned = 0;
+			for (int b = 0; b < this.bufferCount; b++) {
+				if (!this.buffers[b].owner.isAlive()) {
+					while (this.buffers[b].nextTime() != Long.MAX_VALUE)
+						out.println(this.buffers[b].nextLine()); // write any remaining contents (would be shame to miss why thread died)
+					cleaned++;
+				}
+				else if (cleaned != 0) {
+					this.buffers[b - cleaned] = this.buffers[b];
+					this.buffers[b] = null;
+				}
+			}
+			this.bufferCount -= cleaned;
+		}
+		synchronized int bufferCount() {
+			return this.bufferCount;
+		}
+		synchronized int bufferLevel() {
+			int level = 0;
+			for (int b = 0; b < this.bufferCount; b++)
+				level += this.buffers[b].level();
+			return level;
+		}
+		
+		//	this stores the output per thread, so no thread needs to compete with other over IO locks
+		private static class LogBuffer {
+			private static final int MIN_SIZE = 64;
+			private static final int MAX_PERMANENT_SIZE = 1024;
+			final Thread owner;
+			Thread waitingOwner = null;
+			private String[] lineBuffer = new String[MIN_SIZE];
+			private long[] timeBuffer = new long[MIN_SIZE];
+			private int firstLine = 0;
+			private int lastLine = 0;
+			LogBuffer() {
+				this.owner = Thread.currentThread();
+			}
+			
+			int size() {
+				return this.lineBuffer.length;
+			}
+			synchronized int level() {
+				return (this.lastLine - this.firstLine);
+			}
+			synchronized long nextTime() {
+				return ((this.firstLine < this.lastLine) ? this.timeBuffer[this.firstLine] : Long.MAX_VALUE);
+			}
+			synchronized String nextLine() {
+				return ((this.firstLine < this.lastLine) ? this.lineBuffer[this.firstLine++] : null);
+			}
+			
+			synchronized void storeLine(String line) {
+				this.ensureCapacity();
+				this.lineBuffer[this.lastLine] = line;
+				this.timeBuffer[this.lastLine] = System.currentTimeMillis();
+				this.lastLine++;
+//				if (((this.lastLine - this.firstLine) % 256) == 0)
+				if (((this.lastLine - this.firstLine) & 0x000000FF) == 0)
+					Thread.yield(); // give the logger a chance to work off the load
+//				if (((this.lastLine - this.firstLine) % 1024) == 0)
+				if (((this.lastLine - this.firstLine) & 0x000003FF /* maximum permanent size less 1 */) == 0) try {
+					this.waitingOwner = this.owner;
+					this.wait(50); // really give the logger a chance to work off the load
+					this.waitingOwner = null;
+				} catch (InterruptedException ie) {}
+			}
+			private void ensureCapacity() {
+				
+				//	we're empty, move to front
+				if (this.firstLine == this.lastLine) {
+					this.firstLine = 0;
+					this.lastLine = 0;
+				}
+				
+				//	we still got space
+				if (this.lastLine < this.lineBuffer.length)
+					return;
+				
+				//	shift contents to front
+				if (this.firstLine != 0) {
+					System.arraycopy(this.lineBuffer, this.firstLine, this.lineBuffer, 0, (this.lineBuffer.length - this.firstLine));
+					System.arraycopy(this.timeBuffer, this.firstLine, this.timeBuffer, 0, (this.timeBuffer.length - this.firstLine));
+					this.lastLine -= this.firstLine;
+					this.firstLine = 0;
+					return;
+				}
+				
+				//	double up buffers to create space
+				String[] cLineBuffer = new String[this.lineBuffer.length * 2];
+				System.arraycopy(this.lineBuffer, this.firstLine, cLineBuffer, 0, (this.lineBuffer.length - this.firstLine));
+				long[] cTimeBuffer = new long[this.timeBuffer.length * 2];
+				System.arraycopy(this.timeBuffer, this.firstLine, cTimeBuffer, 0, (this.timeBuffer.length - this.firstLine));
+				this.lineBuffer = cLineBuffer;
+				this.timeBuffer = cTimeBuffer;
+				this.lastLine -= this.firstLine;
+				this.firstLine = 0;
+			}
+			synchronized void shrinkCapacity() {
+				if (this.waitingOwner != null)
+					this.notify(); // wake up suspended owner
+				if (this.lineBuffer.length < MAX_PERMANENT_SIZE)
+					return; // still in bounds
+				int level = this.level();
+				if (this.lineBuffer.length < (level * 2))
+					return; // too full to shrink
+				if (MAX_PERMANENT_SIZE <= level)
+					return; // still too full to shrink
+				
+				//	compute reduced size (lowest power of two accommodating current content)
+				int sSize = MAX_PERMANENT_SIZE;
+				while (((level * 2) < sSize) && (MIN_SIZE < sSize))
+					sSize /= 2;
+				
+				//	shrink buffers
+				String[] sLineBuffer = new String[sSize];
+				System.arraycopy(this.lineBuffer, this.firstLine, sLineBuffer, 0, level);
+				long[] sTimeBuffer = new long[sSize];
+				System.arraycopy(this.timeBuffer, this.firstLine, sTimeBuffer, 0, level);
+				this.lineBuffer = sLineBuffer;
+				this.timeBuffer = sTimeBuffer;
+				this.lastLine -= this.firstLine;
+				this.firstLine = 0;
+			}
+		}
+	}
+//	
+//	//	FOR TESTING ONLY !!!
+//	private static class TestHelper {
+//		public static void main(String[] args) throws Exception {
+//			final LogStream ls = new LogStream(System.out);
+//			Thread[] threads = new Thread[100];
+//			final int[] round = {0};
+//			for (int t = 0; t < threads.length; t++) {
+//				threads[t] = new Thread() {
+//					public void run() {
+//						int r;
+//						do {
+//							synchronized (round) {
+//								r = round[0]++;
+//							}
+//							ls.println("Thread is " + Thread.currentThread().getName());
+//							ls.println("Time is " + System.currentTimeMillis());
+//							try {
+//								Thread.sleep(10);
+//							} catch (InterruptedException ie) {}
+//							ls.println("Round " + r + " done");
+//						}
+//						while (r < 10000);
+//					}
+//				};
+//				threads[t].start();
+//			}
+//			for (int t = 0; t < threads.length; t++) try {
+//				threads[t].join();
+//			} catch (InterruptedException ie) {}
+//			System.out.println("Got " + ls.bufferCount + " buffers");
+//			for (int b = 0; b < ls.bufferCount; b++)
+//				System.out.println(ls.buffers[b].owner.getName() + ": " + ls.buffers[b].lineBuffer.length);
+//			ls.flush();
+//			ls.println("All done");
+//			ls.close();
+//			System.out.println("Got " + ls.bufferCount + " buffers");
+//			for (int b = 0; b < ls.bufferCount; b++)
+//				System.out.println(ls.buffers[b].owner.getName() + ": " + ls.buffers[b].lineBuffer.length);
+//		}
+//	}
 }

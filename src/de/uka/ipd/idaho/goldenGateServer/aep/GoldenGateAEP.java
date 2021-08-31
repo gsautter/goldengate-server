@@ -68,8 +68,11 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	}
 	
 	static void listInstances(String prefix, ComponentActionConsole cac) {
-		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
-			String epName = ((String) enit.next());
+//		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
+//			String epName = ((String) enit.next());
+		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
+		for (int i = 0; i < instanceNames.size(); i++) {
+			String epName = ((String) instanceNames.get(i));
 			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
 			boolean isFlushingQueue = (flushingEventHandler == ep.eventHandler);
 			cac.reportResult(prefix + epName + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (isFlushingQueue ? " FLUSHING" : ""));
@@ -77,8 +80,11 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	}
 	
 	static void checkInstances(String prefix, ComponentActionConsole cac) {
-		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
-			String epName = ((String) enit.next());
+//		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
+//			String epName = ((String) enit.next());
+		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
+		for (int i = 0; i < instanceNames.size(); i++) {
+			String epName = ((String) instanceNames.get(i));
 			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
 			if (ep.startEventHandler())
 				cac.reportResult(prefix + epName + " (" + ep.getClass().getName() + "): worker thread restarted");
@@ -86,28 +92,28 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 	}
 	
-	private static UpdateEventHandler flushingEventHandler = null;
-	private static synchronized boolean setFlushingEventHandler(UpdateEventHandler ueh, boolean flushing) {
+	private static DataEventHandler flushingEventHandler = null;
+	private static synchronized boolean setFlushingEventHandler(DataEventHandler deh, boolean flushing) {
 		
 		//	we need to know who's calling
-		if (ueh == null)
+		if (deh == null)
 			return false;
 		
 		//	there's already someone flushing, allow only one at a time
 		if ((flushingEventHandler != null) && flushing)
-			return (flushingEventHandler == ueh); // success only if flushing handler announces itself a second time
+			return (flushingEventHandler == deh); // success only if flushing handler announces itself a second time
 		
 		//	start flushing (set flushing handler
 		else if ((flushingEventHandler == null) && flushing) {
-			flushingEventHandler = ueh;
-			ueh.flushing = true;
+			flushingEventHandler = deh;
+			deh.flushing = true;
 			return true;
 		}
 		
 		//	stop flushing (only allowed for flushing handler)
-		else if ((flushingEventHandler == ueh) && !flushing) {
+		else if ((flushingEventHandler == deh) && !flushing) {
 			flushingEventHandler = null;
-			ueh.flushing = false;
+			deh.flushing = false;
 			return true;
 		}
 		
@@ -115,9 +121,9 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		else return false;
 	}
 	
-	private static final Object aepPauseLock = new Object();
-	private static final Set aepPausedInstances = Collections.synchronizedSet(new HashSet());
-	private static boolean aepPause = false;
+	static final Object aepPauseLock = new Object();
+	static final Set aepPausedInstances = Collections.synchronizedSet(new HashSet());
+	static boolean aepPause = false;
 	static boolean setAepPause(boolean pause) {
 		if (aepPause == pause)
 			return false;
@@ -269,9 +275,9 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		try {
 			sqr = this.io.executeSelectQuery(loadQuery);
 			while (sqr.next()) {
-				UpdateEvent ue = new UpdateEvent(sqr.getString(0), sqr.getLong(1), (NULL_USER_NAME.equals(sqr.getString(2)) ? null : sqr.getString(2)), sqr.getString(3).charAt(0), sqr.getString(4).charAt(0), sqr.getLong(5));
-				ue.persistStatus = UpdateEvent.PERSIST_STATUS_PERSISTED; // we don't want to persist this one again
-				this.eventQueue.enqueue(ue);
+				DataEvent de = new DataEvent(sqr.getString(0), sqr.getLong(1), (NULL_USER_NAME.equals(sqr.getString(2)) ? null : sqr.getString(2)), sqr.getString(3).charAt(0), sqr.getString(4).charAt(0), sqr.getLong(5));
+				de.persistStatus = DataEvent.PERSIST_STATUS_PERSISTED; // we don't want to persist this one again
+				this.eventQueue.enqueue(de);
 			}
 		}
 		catch (SQLException sqle) {
@@ -293,7 +299,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			return false;
 		if (this.eventQueueMonitor != null)
 			this.eventQueueMonitor.dispose();
-		this.eventHandler = new UpdateEventHandler(this.getEventProcessorName() + "EventHandler");
+		this.eventHandler = new DataEventHandler(this.getEventProcessorName() + "EventHandler");
 		this.eventHandler.start();
 		this.eventQueueMonitor = new AsynchronousWorkQueue(this.getEventProcessorName()) {
 			public String getStatus() {
@@ -310,7 +316,12 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				else if (GoldenGateAEP.this.eventHandler.eventEnd != -1)
 					eventProcessorStatus = ("last event finished " + (System.currentTimeMillis() - GoldenGateAEP.this.eventHandler.eventEnd) + "ms ago");
 				else eventProcessorStatus = null;
-				return (this.name + ": " + eventQueueStatus + ((GoldenGateAEP.this.eventHandler == flushingEventHandler) ? ", FLUSHING" : "") + ((eventProcessorStatus == null) ? "" : (", " + eventProcessorStatus)));
+				String eventProcessingMode = ((GoldenGateAEP.this.eventHandler == flushingEventHandler) ? ", FLUSHING" : "");
+				if (aepPause)
+					eventProcessingMode += ((aepPausedInstances.contains(GoldenGateAEP.this.eventHandler)) ? ", PAUSED" : ", PAUSING");
+				else if (!GoldenGateAEP.this.eventHandler.active)
+					eventProcessingMode += ((GoldenGateAEP.this.eventHandler.eventStart == -1) ? ", PASSIVE" : ", GOING PASSIVE");
+				return (this.name + ": " + eventQueueStatus + eventProcessingMode + ((eventProcessorStatus == null) ? "" : (", " + eventProcessorStatus)));
 			}
 		};
 		return true;
@@ -338,6 +349,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	private static final String FLUSH_QUEUE_COMMAND = "flushQueue";
 	private static final String FLUSH_STOP_COMMAND = "flushStop";
 	private static final String WAKE_UP_COMMAND = "wakeUp";
+	private static final String PASSIVATE_COMMAND = "passivate";
+	private static final String ACTIVATE_COMMAND = "activate";
 	private static final String CLEAR_QUEUE_COMMAND = "clearQueue";
 	private static final String ENQUEUE_UPDATE_COMMAND = "enqueueUpdate";
 	private static final String ENQUEUE_DELETION_COMMAND = "enqueueDelete";
@@ -413,6 +426,48 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 				else if (eventHandler != null)
 					eventHandler.setFlushing(false, this);
+			}
+		};
+		cal.add(ca);
+		
+		//	passivate event handler
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return PASSIVATE_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						PASSIVATE_COMMAND,
+						"Set the event handler to passive mode (collect and persist events, but don't process them)."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else if (eventHandler != null)
+					eventHandler.setActive(false, this);
+			}
+		};
+		cal.add(ca);
+		
+		//	activate event handler
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return ACTIVATE_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						ACTIVATE_COMMAND,
+						"Set the event handler to active mode (collect, persist, and process events)."
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length != 0)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
+				else if (eventHandler != null)
+					eventHandler.setActive(true, this);
 			}
 		};
 		cal.add(ca);
@@ -677,7 +732,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	 * @return the position at which the update event is enqueued
 	 */
 	protected int dataUpdated(String dataId, boolean isNewData, String user, char priority, long params) {
-		return this.enqueueEvent(new UpdateEvent(dataId, user, (isNewData ? UpdateEvent.TYPE_CREATE : UpdateEvent.TYPE_UPDATE), priority, params));
+		return this.enqueueEvent(new DataEvent(dataId, user, (isNewData ? DataEvent.TYPE_CREATE : DataEvent.TYPE_UPDATE), priority, params));
 	}
 	
 	/**
@@ -731,13 +786,13 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	 * @return the position at which the deletion event is enqueued
 	 */
 	protected int dataDeleted(String dataId, String user, char priority, long params) {
-		return this.enqueueEvent(new UpdateEvent(dataId, user, UpdateEvent.TYPE_DELETE, priority, params));
+		return this.enqueueEvent(new DataEvent(dataId, user, DataEvent.TYPE_DELETE, priority, params));
 	}
 	
 	private static char getInheritedPriority() {
 		Thread t = Thread.currentThread();
-		if (t instanceof UpdateEventHandler)
-			return ((UpdateEventHandler) t).eventPriority;
+		if (t instanceof DataEventHandler)
+			return ((DataEventHandler) t).eventPriority;
 		else return PRIORITY_NORMAL;
 	}
 	
@@ -754,7 +809,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		return new Properties();
 	}
 	
-	private static class UpdateEvent {
+	private static class DataEvent {
 		static final char TYPE_CREATE = 'C';
 		static final char TYPE_UPDATE = 'U';
 		static final char TYPE_DELETE = 'D';
@@ -780,10 +835,10 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		char status = STATUS_QUEUED;
 		char persistStatus = PERSIST_STATUS_NEW;
 		
-		UpdateEvent(String dataId, String user, char type, char priority, long params) {
+		DataEvent(String dataId, String user, char type, char priority, long params) {
 			this(dataId, System.currentTimeMillis(), user, type, priority, params);
 		}
-		UpdateEvent(String dataId, long timestamp, String user, char type, char priority, long params) {
+		DataEvent(String dataId, long timestamp, String user, char type, char priority, long params) {
 			this.dataId = dataId;
 			this.timestamp = timestamp;
 			this.user = user;
@@ -800,56 +855,56 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 	}
 	
-	private class UpdateEventQueue {
-		private UpdateEventBuffer highPriorityQueue = new UpdateEventBuffer(8);
-		private UpdateEventBuffer normPriorityQueue = new UpdateEventBuffer(16);
-		private UpdateEventBuffer lowPriorityQueue = new UpdateEventBuffer(8);
+	private class DataEventQueue {
+		private DataEventBuffer highPriorityQueue = new DataEventBuffer(8);
+		private DataEventBuffer normPriorityQueue = new DataEventBuffer(16);
+		private DataEventBuffer lowPriorityQueue = new DataEventBuffer(8);
 		private HashMap eventsByDataId = new HashMap();
 		private LinkedList persistQueue = new LinkedList();
 		
-		int enqueue(UpdateEvent ue) {
+		int enqueue(DataEvent de) {
 			
 			//	get existing event (for aggregation and priority escalation)
-			UpdateEvent exUe = ((UpdateEvent) this.eventsByDataId.get(ue.dataId));
+			DataEvent exDe = ((DataEvent) this.eventsByDataId.get(de.dataId));
 			
 			//	no existing event, enqueue new one for persisting (unless just restored from database)
-			if (exUe == null) {
-				if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_NEW)
-					this.persistQueue.add(ue);
+			if (exDe == null) {
+				if (de.persistStatus == DataEvent.PERSIST_STATUS_NEW)
+					this.persistQueue.add(de);
 			}
 			
 			//	deletion cancels creation and update
-			else if (ue.isDeletion()) {
+			else if (de.isDeletion()) {
 				
 				//	deletion and existing creation ==> clean up altogether
-				if (exUe.isCreation()) {
-					this.eventsByDataId.remove(exUe.dataId);
-					this.markForCleanup(exUe);
+				if (exDe.isCreation()) {
+					this.eventsByDataId.remove(exDe.dataId);
+					this.markForCleanup(exDe);
 					
 					//	enqueue cleanup if cancelled creation already persisted, prevent persisting otherwise
-					if (exUe.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED) {
-						ue.persistStatus = UpdateEvent.PERSIST_STATUS_CLEANUP;
-						this.persistQueue.add(ue);
+					if (exDe.persistStatus == DataEvent.PERSIST_STATUS_PERSISTED) {
+						de.persistStatus = DataEvent.PERSIST_STATUS_CLEANUP;
+						this.persistQueue.add(de);
 					}
-					else exUe.persistStatus = UpdateEvent.PERSIST_STATUS_INVALID;
+					else exDe.persistStatus = DataEvent.PERSIST_STATUS_INVALID;
 					
 					//	we're not enqueuing any events for processing
 					return -1;
 				}
 				
 				//	we have an existing deletion (might have been enqueued by batch) ==> escalate priority if applicable
-				else if (exUe.isDeletion()) {
-					if (exUe.priority < ue.priority) {
+				else if (exDe.isDeletion()) {
+					if (exDe.priority < de.priority) {
 						
 						//	escalate priority (retain original timestamp and event type, but use latest update user on two deletions)
-						ue = new UpdateEvent(exUe.dataId, exUe.timestamp, ((exUe.isCreation() && (exUe.user != null)) ? exUe.user : ue.user), exUe.type, ue.priority, aggregateEventParams(exUe.params, ue.params));
-						this.markForCleanup(exUe);
+						de = new DataEvent(exDe.dataId, exDe.timestamp, ((exDe.isCreation() && (exDe.user != null)) ? exDe.user : de.user), exDe.type, de.priority, aggregateEventParams(exDe.params, de.params));
+						this.markForCleanup(exDe);
 						
 						//	enqueue update if existing event already persisted, prevent persisting it and stick with insertion otherwise
-						if (exUe.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED)
-							ue.persistStatus = UpdateEvent.PERSIST_STATUS_UPDATE;
-						else exUe.persistStatus = UpdateEvent.PERSIST_STATUS_INVALID;
-						this.persistQueue.add(ue);
+						if (exDe.persistStatus == DataEvent.PERSIST_STATUS_PERSISTED)
+							de.persistStatus = DataEvent.PERSIST_STATUS_UPDATE;
+						else exDe.persistStatus = DataEvent.PERSIST_STATUS_INVALID;
+						this.persistQueue.add(de);
 					}
 				}
 				
@@ -857,54 +912,54 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				else {
 					
 					//	move up deletion
-					ue = new UpdateEvent(exUe.dataId, exUe.timestamp, ((ue.user == null) ? exUe.user : ue.user), ue.type, ((char) Math.max(exUe.priority, ue.priority)), aggregateEventParams(exUe.params, ue.params));
-					this.markForCleanup(exUe);
+					de = new DataEvent(exDe.dataId, exDe.timestamp, ((de.user == null) ? exDe.user : de.user), de.type, ((char) Math.max(exDe.priority, de.priority)), aggregateEventParams(exDe.params, de.params));
+					this.markForCleanup(exDe);
 					
 					//	enqueue update if existing event already persisted, prevent persisting it and stick with insertion otherwise
-					if (exUe.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED)
-						ue.persistStatus = UpdateEvent.PERSIST_STATUS_UPDATE;
-					else exUe.persistStatus = UpdateEvent.PERSIST_STATUS_INVALID;
-					this.persistQueue.add(ue);
+					if (exDe.persistStatus == DataEvent.PERSIST_STATUS_PERSISTED)
+						de.persistStatus = DataEvent.PERSIST_STATUS_UPDATE;
+					else exDe.persistStatus = DataEvent.PERSIST_STATUS_INVALID;
+					this.persistQueue.add(de);
 				}
 			}
 			
 			//	update and existing creation or update ==> escalate priority if applicable
-			else if (exUe.priority < ue.priority) {
+			else if (exDe.priority < de.priority) {
 				
 				//	escalate priority (retain original timestamp and event type, but use latest update user on two updates)
-				ue = new UpdateEvent(exUe.dataId, exUe.timestamp, ((exUe.isCreation() && (exUe.user != null)) ? exUe.user : ue.user), exUe.type, ue.priority, aggregateEventParams(exUe.params, ue.params));
-				this.markForCleanup(exUe);
+				de = new DataEvent(exDe.dataId, exDe.timestamp, ((exDe.isCreation() && (exDe.user != null)) ? exDe.user : de.user), exDe.type, de.priority, aggregateEventParams(exDe.params, de.params));
+				this.markForCleanup(exDe);
 				
 				//	enqueue update if existing event already persisted, prevent persisting it and stick with insertion otherwise
-				if (exUe.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED)
-					ue.persistStatus = UpdateEvent.PERSIST_STATUS_UPDATE;
-				else exUe.persistStatus = UpdateEvent.PERSIST_STATUS_INVALID;
-				this.persistQueue.add(ue);
+				if (exDe.persistStatus == DataEvent.PERSIST_STATUS_PERSISTED)
+					de.persistStatus = DataEvent.PERSIST_STATUS_UPDATE;
+				else exDe.persistStatus = DataEvent.PERSIST_STATUS_INVALID;
+				this.persistQueue.add(de);
 			}
 			
 			//	nothing to do at all (subsequent update events for same data object without priority escalation)
 			else return -1;
 			
 			//	enqueue event according to priority
-			int uePos;
-			if (ue.priority >= PRIORITY_HIGH)
-				uePos = this.highPriorityQueue.addLast(ue, (exUe == null));
-			else if (ue.priority >= PRIORITY_NORMAL) {
-				uePos = this.normPriorityQueue.addLast(ue, (exUe == null));
-				uePos += this.highPriorityQueue.size();
+			int dePos;
+			if (de.priority >= PRIORITY_HIGH)
+				dePos = this.highPriorityQueue.addLast(de, (exDe == null));
+			else if (de.priority >= PRIORITY_NORMAL) {
+				dePos = this.normPriorityQueue.addLast(de, (exDe == null));
+				dePos += this.highPriorityQueue.size();
 			}
 			else {
-				uePos = this.lowPriorityQueue.addLast(ue, (exUe == null));
-				uePos += this.highPriorityQueue.size();
-				uePos += this.normPriorityQueue.size();
+				dePos = this.lowPriorityQueue.addLast(de, (exDe == null));
+				dePos += this.highPriorityQueue.size();
+				dePos += this.normPriorityQueue.size();
 			}
 			
 			//	register event and indicate enqueuing position
-			this.eventsByDataId.put(ue.dataId, ue);
-			return uePos;
+			this.eventsByDataId.put(de.dataId, de);
+			return dePos;
 		}
 		
-		UpdateEvent dequeue() {
+		DataEvent dequeue() {
 			
 			//	run cleanup (at expense of event processor, not event creating thread, and thus here)
 			this.highPriorityQueue.runCleanup();
@@ -912,23 +967,23 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			this.lowPriorityQueue.runCleanup();
 			
 			//	retrieve event of highest priority available
-			UpdateEvent ue;
+			DataEvent de;
 			if (this.highPriorityQueue.size() != 0)
-				ue = ((UpdateEvent) this.highPriorityQueue.removeFirst());
+				de = this.highPriorityQueue.removeFirst();
 			else if (this.normPriorityQueue.size() != 0)
-				ue = ((UpdateEvent) this.normPriorityQueue.removeFirst());
-			else ue = ((UpdateEvent) this.lowPriorityQueue.removeFirst());
+				de = this.normPriorityQueue.removeFirst();
+			else de = this.lowPriorityQueue.removeFirst();
 			
 			//	unregister and return event
-			this.eventsByDataId.remove(ue.dataId);
-			return ue;
+			this.eventsByDataId.remove(de.dataId);
+			return de;
 		}
 		
-		void markForCleanup(UpdateEvent ue) {
-			ue.status = UpdateEvent.STATUS_INVALID;
-			if (ue.priority >= PRIORITY_HIGH)
+		void markForCleanup(DataEvent de) {
+			de.status = DataEvent.STATUS_INVALID;
+			if (de.priority >= PRIORITY_HIGH)
 				this.highPriorityQueue.markForCleanup();
-			else if (ue.priority >= PRIORITY_NORMAL)
+			else if (de.priority >= PRIORITY_NORMAL)
 				this.normPriorityQueue.markForCleanup();
 			else this.lowPriorityQueue.markForCleanup();
 		}
@@ -941,8 +996,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			this.lowPriorityQueue.clear();
 			for (Iterator diit = this.eventsByDataId.keySet().iterator(); diit.hasNext();) {
 				String dataId = ((String) diit.next());
-				UpdateEvent ue = ((UpdateEvent) this.eventsByDataId.get(dataId));
-				if (ue.status == UpdateEvent.STATUS_INVALID)
+				DataEvent ue = ((DataEvent) this.eventsByDataId.get(dataId));
+				if (ue.status == DataEvent.STATUS_INVALID)
 					diit.remove();
 			}
 		}
@@ -950,14 +1005,14 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		ArrayList getPersistEvents() {
 			ArrayList pes = null;;
 			for (Iterator peit = this.persistQueue.iterator(); peit.hasNext();) {
-				UpdateEvent ue = ((UpdateEvent) peit.next());
-				if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED)
+				DataEvent de = ((DataEvent) peit.next());
+				if (de.persistStatus == DataEvent.PERSIST_STATUS_PERSISTED)
 					peit.remove();
-				else if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_INVALID)
+				else if (de.persistStatus == DataEvent.PERSIST_STATUS_INVALID)
 					peit.remove();
 				if (pes == null)
 					pes = new ArrayList();
-				pes.add(ue);
+				pes.add(de);
 			}
 			return pes;
 		}
@@ -966,24 +1021,24 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			return this.eventsByDataId.size();
 		}
 		
-		private class UpdateEventBuffer {
-			private UpdateEvent[] events;
+		private class DataEventBuffer {
+			private DataEvent[] events;
 			private int first = 0;
 			private int last = 0;
 			private boolean eventsClean = true;
 			
-			UpdateEventBuffer(int capacity) {
-				this.events = new UpdateEvent[capacity];
+			DataEventBuffer(int capacity) {
+				this.events = new DataEvent[capacity];
 			}
 
-			UpdateEvent removeFirst() {
+			DataEvent removeFirst() {
 				
 				//	anything to return?
 				if (this.first == this.last)
 					throw new NoSuchElementException("The event buffer is empty.");
 				
 				//	get and clear first event, and switch to next one
-				UpdateEvent ue = this.events[this.first];
+				DataEvent de = this.events[this.first];
 				this.events[this.first] = null;
 				this.first++;
 				
@@ -994,18 +1049,18 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				}
 				
 				//	finally ...
-				return ue;
+				return de;
 			}
 			
-			int addLast(UpdateEvent ue, boolean inOrder) {
+			int addLast(DataEvent de, boolean inOrder) {
 				
 				//	get insert position
-				int uePos;
+				int dePos;
 				
 				//	make sure we have enough room
 				if (this.last == this.events.length) {
 					if (this.first == 0) { // we're aligned at 0, need to increase array
-						UpdateEvent[] es = new UpdateEvent[this.events.length * 2];
+						DataEvent[] es = new DataEvent[this.events.length * 2];
 						System.arraycopy(this.events, 0, es, 0, this.events.length);
 						this.events = es;
 					}
@@ -1018,27 +1073,27 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				}
 				
 				//	store new event and move out end pointer
-				uePos = this.size();
-				this.events[this.last++] = ue;
+				dePos = this.size();
+				this.events[this.last++] = de;
 				
 				//	nothing to sort, and never on single element
 				if (inOrder || (this.size() < 2))
-					return uePos; // enqueued at very end
+					return dePos; // enqueued at very end
 				
 				//	bubble sort in new event if requested (happens on priority escalation)
-				UpdateEvent tue = null;
+				DataEvent tde = null;
 				for (int e = (this.last-1); e > this.first; e--) {
 					if (this.events[e].timestamp < this.events[e-1].timestamp) {
-						tue = this.events[e-1];
+						tde = this.events[e-1];
 						this.events[e-1] = this.events[e];
-						this.events[e] = tue;
-						uePos--;
+						this.events[e] = tde;
+						dePos--;
 					}
 					else break;
 				}
 				
 				//	finally ...
-				return uePos;
+				return dePos;
 			}
 			
 			int size() {
@@ -1047,8 +1102,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			
 			void clear() {
 				for (int e = this.first; e < this.last; e++) {
-					this.events[e].status = UpdateEvent.STATUS_INVALID;
-					this.events[e].persistStatus = UpdateEvent.PERSIST_STATUS_INVALID;
+					this.events[e].status = DataEvent.STATUS_INVALID;
+					this.events[e].persistStatus = DataEvent.PERSIST_STATUS_INVALID;
 				}
 				Arrays.fill(this.events, this.first, this.last, null);
 				this.first = 0;
@@ -1063,8 +1118,8 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				if (this.eventsClean)
 					return;
 				for (int e = this.first; e < this.last; e++)
-					if (this.events[e].status == UpdateEvent.STATUS_INVALID) {
-						this.events[e].persistStatus = UpdateEvent.PERSIST_STATUS_INVALID;
+					if (this.events[e].status == DataEvent.STATUS_INVALID) {
+						this.events[e].persistStatus = DataEvent.PERSIST_STATUS_INVALID;
 						System.arraycopy(this.events, (e+1), this.events, e, (this.last - (e+1)));
 						this.events[this.last-1] = null;
 						this.last--;
@@ -1087,7 +1142,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 	}
 	
-	private int enqueueEvent(UpdateEvent event) {
+	private int enqueueEvent(DataEvent event) {
 		
 		//	enqueue event and wake up handler
 		synchronized (this.eventQueue) {
@@ -1104,12 +1159,13 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 	}
 	
-	private UpdateEventQueue eventQueue = new UpdateEventQueue();
-	private UpdateEventHandler eventHandler;
+	private DataEventQueue eventQueue = new DataEventQueue();
+	private DataEventHandler eventHandler;
 	private AsynchronousWorkQueue eventQueueMonitor;
 	
-	private class UpdateEventHandler extends Thread {
+	private class DataEventHandler extends Thread {
 		private boolean running = true;
+		private boolean active = true;
 		private boolean flushing = false;
 		char eventPriority = ((char) 0);
 		long eventStart = -1;
@@ -1117,7 +1173,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		private final Object sleepLock = new Object();
 		long sleepStart = -1;
 		long sleepEnd = -1;
-		UpdateEventHandler(String name) {
+		DataEventHandler(String name) {
 			super(name);
 		}
 		public void run() {
@@ -1138,15 +1194,17 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 					return;
 				
 				//	get next event, or wait until next event available
-				UpdateEvent ue = null;
+				DataEvent de = null;
 				ArrayList pes = null;
 				synchronized (eventQueue) {
 					if (eventQueue.size() == 0) try {
 						eventQueue.wait();
 					} catch (InterruptedException ie) {}
 					if (eventQueue.size() != 0) {
-						ue = eventQueue.dequeue();
-						ue.status = UpdateEvent.STATUS_PROCESING;
+						if (this.active) /* only persist events in passive mode */ {
+							de = eventQueue.dequeue();
+							de.status = DataEvent.STATUS_PROCESING;
+						}
 						pes = eventQueue.getPersistEvents();
 					}
 				}
@@ -1161,40 +1219,42 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				//	keep track of resource use
 				long eventProcessingTime;
 				
-				//	nothing to do
-				if (ue == null)
-					eventProcessingTime = 0;
+				//	nothing to do (wait 10 additional seconds in passive mode)
+				if (de == null) {
+					eventProcessingTime = (this.active ? 0 : (1000 * 10));
+					this.eventEnd = System.currentTimeMillis();
+				}
 				
 				//	got event to process
 				else {
 					long eventProcessingStart = System.currentTimeMillis();
-					logInfo(getEventProcessorName() + ": got " + (ue.isDeletion() ? "delete" : "update") + " event for object '" + ue.dataId + "'");
-					this.eventPriority = ue.priority;
+					logInfo(getEventProcessorName() + ": got " + (de.isDeletion() ? "delete" : "update") + " event for object '" + de.dataId + "'");
+					this.eventPriority = de.priority;
 					this.eventStart = eventProcessingStart;
 					this.eventEnd = -1;
 					try {
 						
 						//	load data attributes if not done before
-						if (ue.dataAttributes.getDefaults() == null)
-							ue.dataAttributes.setDefaults(loadDataAttributes(ue.dataId));
+						if (de.dataAttributes.getDefaults() == null)
+							de.dataAttributes.setDefaults(loadDataAttributes(de.dataId));
 						
 						//	deletion
-						if (ue.isDeletion())
-							doDelete(ue.dataId, ue.user, ue.dataAttributes, ue.params);
+						if (de.isDeletion())
+							doDelete(de.dataId, de.user, de.dataAttributes, de.params);
 						
 						//	update
 						else {
-							if (ue.isCreation())
-								ue.dataAttributes.setProperty(IS_NEW_OBJECT_ATTRIBUTE, "true");
-							doUpdate(ue.dataId, ue.user, ue.dataAttributes, ue.params);
+							if (de.isCreation())
+								de.dataAttributes.setProperty(IS_NEW_OBJECT_ATTRIBUTE, "true");
+							doUpdate(de.dataId, de.user, de.dataAttributes, de.params);
 						}
 					}
 					catch (Exception e) {
-						logError(getEventProcessorName() + ": Error handling update event for object '" + ue.dataId + "' - " + e.getMessage());
+						logError(getEventProcessorName() + ": Error handling update event for object '" + de.dataId + "' - " + e.getMessage());
 						logError(e);
 					}
 					catch (Throwable t) {
-						logError(getEventProcessorName() + ": Error handling update event for object '" + ue.dataId + "' - " + t.getMessage());
+						logError(getEventProcessorName() + ": Error handling update event for object '" + de.dataId + "' - " + t.getMessage());
 						logError(t);
 					}
 					finally {
@@ -1203,9 +1263,9 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 						logInfo("  - event processed in " + eventProcessingTime + "ms");
 						
 						//	clean up event after processing (if persisted)
-						ue.status = UpdateEvent.STATUS_DONE;
-						if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_PERSISTED)
-							cleanupPersistedEvent(ue);
+						de.status = DataEvent.STATUS_DONE;
+						if (de.persistStatus == DataEvent.PERSIST_STATUS_PERSISTED)
+							cleanupPersistedEvent(de);
 						
 						//	clear thread local event priority
 						this.eventPriority = ((char) 0);
@@ -1223,13 +1283,12 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 					continue;
 				
 				//	compute sleeping time, dependent on number of event processors and activity (time spent on actual event processing)
-				int externalWaitPercentage = getExternalWaitPercentage();
+				int externalWaitPercentage = (this.active ? getExternalWaitPercentage() : 0);
 				externalWaitPercentage = Math.max(externalWaitPercentage, 0);
 				externalWaitPercentage = Math.min(externalWaitPercentage, 100);
 				long sleepTime = (0 + 
 						250 + // base sleep
 						(50 * instanceCount) + // a little extra for every instance
-//						eventProcessingTime + // the time we just occupied the CPU or other resources TODOne factor in external waiting percentage
 						((eventProcessingTime * (100 - externalWaitPercentage)) / 100) + // the time we just occupied the CPU or other resources
 						0);
 				logInfo(getEventProcessorName() + ": sleeping for " + sleepTime + "ms");
@@ -1248,17 +1307,6 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				}
 				this.sleepStart = -1;
 				this.sleepEnd = -1;
-//				
-//				//	give the others a little time (and the export target as well), dependent on number of event processors and activity (time spent on actual exports)
-//				if (!this.flushing && this.running) try {
-//					long sleepTime = (0 + 
-//							250 + // base sleep
-//							(50 * instanceCount) + // a little extra for every instance
-//							eventProcessingTime + // the time we just occupied the CPU or other resources
-//							0);
-//					logInfo(getEventProcessorName() + ": sleeping for " + sleepTime + "ms");
-//					Thread.sleep(sleepTime);
-//				} catch (InterruptedException ie) {}
 			}
 		}
 		
@@ -1278,10 +1326,26 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		
 		void shutdown() {
 			synchronized (eventQueue) {
+				ArrayList pes = eventQueue.getPersistEvents();
+				persistQueuedEvents(pes, persistProcessingEvents());
 				this.running = false;
 				eventQueue.clear(PRIORITY_HIGH);
 				eventQueue.notify();
 				this.interrupt(); // end any post export or global pause waiting immediately
+			}
+		}
+		
+		void setActive(boolean active, ComponentActionConsole cac) {
+			if (active == this.active) {
+				if (active)
+					cac.reportError("Already in active mode.");
+				else cac.reportError("Already in passive mode.");
+			}
+			else {
+				this.active = active;
+				if (active)
+					cac.reportResult("Switched to active mode.");
+				else cac.reportResult("Switched to passive mode.");
 			}
 		}
 		
@@ -1294,6 +1358,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			else if (setFlushingEventHandler(this, flushing)) {
 				if (flushing) {
 					cac.reportResult("Flushing mode activated.");
+					this.active = true;
 					this.wakeUp(false);
 				}
 				else cac.reportResult("Flushing mode deactivated.");
@@ -1319,31 +1384,31 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			return;
 		LinkedList ies = ((pes.size() < 5) ? null : new LinkedList()); // TODO tune threshold
 		for (int e = 0; e < pes.size(); e++) {
-			UpdateEvent ue = ((UpdateEvent) pes.get(e));
-			if (ue.status == UpdateEvent.STATUS_QUEUED)
-				this.persistQueuedEvent(ue, ies);
-			else if ((ue.status == UpdateEvent.STATUS_PROCESING) && persistProcessing)
-				this.persistQueuedEvent(ue, null);
+			DataEvent de = ((DataEvent) pes.get(e));
+			if (de.status == DataEvent.STATUS_QUEUED)
+				this.persistQueuedEvent(de, ies);
+			else if ((de.status == DataEvent.STATUS_PROCESING) && persistProcessing)
+				this.persistQueuedEvent(de, null);
 		}
 		if ((ies != null) && (ies.size() != 0))
 			this.insertQueuedEvents(ies);
 	}
 	
-	private void persistQueuedEvent(UpdateEvent ue, LinkedList ies) {
+	private void persistQueuedEvent(DataEvent de, LinkedList ies) {
 		
 		//	event is new, persist in new record
-		if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_NEW) {
+		if (de.persistStatus == DataEvent.PERSIST_STATUS_NEW) {
 			
 			//	small number of updates, persist right away
 			if (ies == null) {
 				String insertQuery = "INSERT INTO " + EVENT_TABLE_NAME +
 						" (" + DATA_ID_COLUMN_NAME + ", " + DATA_ID_HASH_COLUMN_NAME + ", " + TIMESTAMP_COLUMN_NAME + ", " + USER_COLUMN_NAME + ", " + TYPE_COLUMN_NAME + ", " + PRIORITY_COLUMN_NAME + ", " + PARAMS_COLUMN_NAME + ")" +
 						" VALUES" +
-						" ('" + EasyIO.sqlEscape(ue.dataId) + "', " + ue.dataId.hashCode() + ", " + ue.timestamp + ", '" + EasyIO.sqlEscape((ue.user == null) ? NULL_USER_NAME : ue.user) + "', '" + ue.type + "', '" + ue.priority + "', " + ue.params + ")" +
+						" ('" + EasyIO.sqlEscape(de.dataId) + "', " + de.dataId.hashCode() + ", " + de.timestamp + ", '" + EasyIO.sqlEscape((de.user == null) ? NULL_USER_NAME : de.user) + "', '" + de.type + "', '" + de.priority + "', " + de.params + ")" +
 						";";
 				try {
 					this.io.executeUpdateQuery(insertQuery);
-					ue.persistStatus = UpdateEvent.PERSIST_STATUS_PERSISTED;
+					de.persistStatus = DataEvent.PERSIST_STATUS_PERSISTED;
 				}
 				catch (SQLException sqle) {
 					this.logError(getEventProcessorName() + ": " + sqle.getMessage() + " while persisting event.");
@@ -1353,26 +1418,26 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			
 			//	large batch of updates, enqueue event for batch persisting
 			else {
-				ies.add(ue);
+				ies.add(de);
 				if (ies.size() >= 16) // TODO tune threshold
 					this.insertQueuedEvents(ies);
 			}
 		}
 		
 		//	event is update, modify existing event for same data object
-		else if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_UPDATE) {
+		else if (de.persistStatus == DataEvent.PERSIST_STATUS_UPDATE) {
 			String updateQuery = "UPDATE " + EVENT_TABLE_NAME + " SET" +
-					" " + USER_COLUMN_NAME + " = '" + EasyIO.sqlEscape((ue.user == null) ? NULL_USER_NAME : ue.user) + "'," +
-					" " + TYPE_COLUMN_NAME + " = '" + ue.type + "'," +
-					" " + PRIORITY_COLUMN_NAME + " = '" + ue.priority + "'," +
-					" " + PARAMS_COLUMN_NAME + " = '" + ue.params + "'" +
-					" WHERE " + DATA_ID_COLUMN_NAME + " = '" + EasyIO.sqlEscape(ue.dataId) + "'" +
-					" AND " + DATA_ID_HASH_COLUMN_NAME + " = " + ue.dataId.hashCode() +
-					" AND " + TIMESTAMP_COLUMN_NAME + " = " + ue.timestamp +
+					" " + USER_COLUMN_NAME + " = '" + EasyIO.sqlEscape((de.user == null) ? NULL_USER_NAME : de.user) + "'," +
+					" " + TYPE_COLUMN_NAME + " = '" + de.type + "'," +
+					" " + PRIORITY_COLUMN_NAME + " = '" + de.priority + "'," +
+					" " + PARAMS_COLUMN_NAME + " = '" + de.params + "'" +
+					" WHERE " + DATA_ID_COLUMN_NAME + " = '" + EasyIO.sqlEscape(de.dataId) + "'" +
+					" AND " + DATA_ID_HASH_COLUMN_NAME + " = " + de.dataId.hashCode() +
+					" AND " + TIMESTAMP_COLUMN_NAME + " = " + de.timestamp +
 					";";
 			try {
 				this.io.executeUpdateQuery(updateQuery);
-				ue.persistStatus = UpdateEvent.PERSIST_STATUS_PERSISTED;
+				de.persistStatus = DataEvent.PERSIST_STATUS_PERSISTED;
 			}
 			catch (SQLException sqle) {
 				this.logError(getEventProcessorName() + ": " + sqle.getMessage() + " while updating persisted event.");
@@ -1381,14 +1446,14 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 		
 		//	event is cleanup, delete existing events for same data object
-		else if (ue.persistStatus == UpdateEvent.PERSIST_STATUS_CLEANUP) {
+		else if (de.persistStatus == DataEvent.PERSIST_STATUS_CLEANUP) {
 			String deleteQuery = "DELETE FROM " + EVENT_TABLE_NAME +
-					" WHERE " + DATA_ID_COLUMN_NAME + " = '" + EasyIO.sqlEscape(ue.dataId) + "'" +
-					" AND " + DATA_ID_HASH_COLUMN_NAME + " = " + ue.dataId.hashCode() +
+					" WHERE " + DATA_ID_COLUMN_NAME + " = '" + EasyIO.sqlEscape(de.dataId) + "'" +
+					" AND " + DATA_ID_HASH_COLUMN_NAME + " = " + de.dataId.hashCode() +
 					";";
 			try {
 				this.io.executeUpdateQuery(deleteQuery);
-				ue.persistStatus = UpdateEvent.PERSIST_STATUS_PERSISTED;
+				de.persistStatus = DataEvent.PERSIST_STATUS_PERSISTED;
 			}
 			catch (SQLException sqle) {
 				this.logError(getEventProcessorName() + ": " + sqle.getMessage() + " while deleting persisted event after cancellation.");
@@ -1402,14 +1467,14 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		insertQuery.append(" (" + DATA_ID_COLUMN_NAME + ", " + DATA_ID_HASH_COLUMN_NAME + ", " + TIMESTAMP_COLUMN_NAME + ", " + USER_COLUMN_NAME + ", " + TYPE_COLUMN_NAME + ", " + PRIORITY_COLUMN_NAME + ", " + PARAMS_COLUMN_NAME + ")");
 		insertQuery.append(" VALUES");
 		for (Iterator ieit = ies.iterator(); ieit.hasNext();) {
-			UpdateEvent ue = ((UpdateEvent) ieit.next());
+			DataEvent ue = ((DataEvent) ieit.next());
 			insertQuery.append(" ('" + EasyIO.sqlEscape(ue.dataId) + "', " + ue.dataId.hashCode() + ", " + ue.timestamp + ", '" + EasyIO.sqlEscape((ue.user == null) ? NULL_USER_NAME : ue.user) + "', '" + ue.type + "', '" + ue.priority + "', " + ue.params + ")");
 			insertQuery.append(ieit.hasNext() ? "," : ";");
 		}
 		try {
 			this.io.executeUpdateQuery(insertQuery.toString());
 			for (Iterator ieit = ies.iterator(); ieit.hasNext();)
-				((UpdateEvent) ieit.next()).persistStatus = UpdateEvent.PERSIST_STATUS_PERSISTED;
+				((DataEvent) ieit.next()).persistStatus = DataEvent.PERSIST_STATUS_PERSISTED;
 			ies.clear();
 		}
 		catch (SQLException sqle) {
@@ -1418,11 +1483,11 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 	}
 	
-	private void cleanupPersistedEvent(UpdateEvent ue) {
+	private void cleanupPersistedEvent(DataEvent de) {
 		String deleteQuery = "DELETE FROM " + EVENT_TABLE_NAME +
-				" WHERE " + DATA_ID_COLUMN_NAME + " = '" + EasyIO.sqlEscape(ue.dataId) + "'" +
-				" AND " + DATA_ID_HASH_COLUMN_NAME + " = " + ue.dataId.hashCode() +
-				" AND " + TIMESTAMP_COLUMN_NAME + " = " + ue.timestamp +
+				" WHERE " + DATA_ID_COLUMN_NAME + " = '" + EasyIO.sqlEscape(de.dataId) + "'" +
+				" AND " + DATA_ID_HASH_COLUMN_NAME + " = " + de.dataId.hashCode() +
+				" AND " + TIMESTAMP_COLUMN_NAME + " = " + de.timestamp +
 				";";
 		try {
 			this.io.executeUpdateQuery(deleteQuery);
