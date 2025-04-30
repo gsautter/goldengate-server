@@ -31,18 +31,20 @@ package de.uka.ipd.idaho.goldenGateServer.util;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
+import java.util.Arrays;
 
 /**
  * Input stream for reading binary data that comes in Base64 encoding via a
  * character level connection.
  * 
  * @author sautter
+ * 
+ * @deprecated use de.uka.ipd.idaho.easyIO.streams.Base64.DecoderInputStream
  */
 public class Base64InputStream extends InputStream {
 	private Reader in;
-	private int[] buffer = new int[3];
-	private int bufferLevel = 3;
-	private int bufferEnd = -1;
+	private int[] buffer = {-1, -1, -1};
+	private int bufferPos = this.buffer.length; // initialize to end of buffer, filling on first read()
 	
 	/**
 	 * Constructor
@@ -56,14 +58,17 @@ public class Base64InputStream extends InputStream {
 	 * @see java.io.InputStream#read()
 	 */
 	public synchronized int read() throws IOException {
-		if (this.bufferLevel == this.bufferEnd)
+		if (this.in == null)
+			throw new IOException("Cloased.");
+		if (this.bufferPos == -1)
 			return -1;
-		
-		if (this.bufferLevel == 3) {
+		if (this.bufferPos == this.buffer.length)
 			this.fillBuffer();
-			return this.read();
+		if (this.buffer[this.bufferPos] == -1) {
+			this.bufferPos = -1;
+			return -1;
 		}
-		else return this.buffer[this.bufferLevel++];
+		else return this.buffer[this.bufferPos++];
 	}
 	
 	/**
@@ -72,31 +77,33 @@ public class Base64InputStream extends InputStream {
 	 */
 	public synchronized void close() throws IOException {
 		this.in.close();
+		this.in = null;
 	}
 	
 	private synchronized void fillBuffer() throws IOException {
-		char[] chars = new char[4];
-		for (int c = 0; c < 4; c++) {
-			int read = this.in.read();
-			if (read == -1) {
-				this.bufferEnd = ((c == 0) ? 0 : (c - 1));
-				while (c < 4)
-					chars[c++] = Base64.paddingChar;
-			}
-			else chars[c] = ((char) read);
-		}
-		boolean lastIsPad = (chars[3] == Base64.paddingChar);
-		boolean secondLastIsPad = (chars[2] == Base64.paddingChar);
-		int[] byteBlockCodes = {
-				Base64.decodeBase64Char(chars[0]), 
-				Base64.decodeBase64Char(chars[1]), 
-				(secondLastIsPad ? 0 : Base64.decodeBase64Char(chars[2])), 
-				(lastIsPad ? 0 : Base64.decodeBase64Char(chars[3]))
-				};
-		int byteBlock = (byteBlockCodes[0] << 18) + (byteBlockCodes[1] << 12) + (byteBlockCodes[2] << 6) + byteBlockCodes[3];
-		this.buffer[0] = ((byteBlock >>> 16) & 255);
-		this.buffer[1] = (secondLastIsPad ? -1 : ((byteBlock >>> 8) & 255));
-		this.buffer[2] = (lastIsPad ? -1 : (byteBlock & 255));
-		this.bufferLevel = 0;
+		Arrays.fill(this.buffer, -1);
+		this.bufferPos = 0;
+		
+		char[] charBlock = new char[4];
+		int read = this.in.read(charBlock, 0, charBlock.length);
+		if (read < 2) // end of stream, or at least no complete byte
+			return;
+		if (read < charBlock.length)
+			Arrays.fill(charBlock, read, charBlock.length, Base64.paddingChar);
+		
+		int byteBlock = (
+				(Base64.decodeBase64Char(charBlock[0]) << 18)
+				|
+				(Base64.decodeBase64Char(charBlock[1]) << 12)
+				|
+				((charBlock[2] == Base64.paddingChar) ? 0 : (Base64.decodeBase64Char(charBlock[2]) << 6))
+				|
+				((charBlock[3] == Base64.paddingChar) ? 0 : (Base64.decodeBase64Char(charBlock[3]) << 0))
+			);
+		this.buffer[0] = ((byteBlock >>> 16) & 0xFF);
+		if (charBlock[2] != Base64.paddingChar)
+			this.buffer[1] = ((byteBlock >>> 8) & 0xFF);
+		if (charBlock[3] == Base64.paddingChar)
+			this.buffer[2] = ((byteBlock >>> 0) & 0xFF);
 	}
 }

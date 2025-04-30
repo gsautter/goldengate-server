@@ -29,16 +29,15 @@ package de.uka.ipd.idaho.goldenGateServer.enr;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.FilterReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.TreeMap;
 
+import de.uka.ipd.idaho.easyIO.streams.CharSequenceReader;
 import de.uka.ipd.idaho.easyIO.util.JsonParser;
 import de.uka.ipd.idaho.gamta.util.CountingSet;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
@@ -77,10 +76,10 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 		public abstract void receive(Notification notification);
 	}
 	
-	private Map notificationTypesByName = Collections.synchronizedMap(new TreeMap());
-	private Map notificationTypesToReceivers = Collections.synchronizedMap(new HashMap());
+	Map notificationTypesByName = Collections.synchronizedMap(new TreeMap());
+	Map notificationTypesToReceivers = Collections.synchronizedMap(new HashMap());
 	
-	private CountingSet notificationTypeCounts = new CountingSet(Collections.synchronizedMap(new TreeMap()));
+	CountingSet notificationTypeCounts = new CountingSet(Collections.synchronizedMap(new TreeMap()));
 	
 	/** Constructor passing 'ENR' as the letter code to super constructor
 	 */
@@ -173,10 +172,6 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 				String nPathInfo = input.readLine();
 				logInfo("Path info is " + nPathInfo);
 				
-				//	read user name
-				String nUserName = input.readLine();
-				logInfo("User name is " + nUserName);
-				
 				//	get notification type and receiver
 				NotificationType nType = ((NotificationType) notificationTypesByName.get(nTypeName));
 				Receiver rec = ((Receiver) notificationTypesToReceivers.get(nTypeName));
@@ -188,35 +183,21 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 				}
 				notificationTypeCounts.add(nType.name);
 				
+				//	read user name
+				String nUserName = input.readLine();
+				logInfo("User name is " + nUserName);
+				
+				//	read body length
+				int nDataLength = Integer.parseInt(input.readLine());
+				logInfo("Body length is " + nDataLength);
+				
 				//	read notification data and pass it to receiver
-//				Object nData = JsonParser.parseJson(input);
-				final StringBuffer nDataBuf = new StringBuffer();
+				StringBuffer nDataBuf = new StringBuffer();
 				try {
-					Object nData = JsonParser.parseJson(new FilterReader(input) {
-						public int read() throws IOException {
-							try {
-								int r = super.read();
-								nDataBuf.append((char) r);
-								return r;
-							}
-							catch (IOException ioe) {
-								logWarning("ENR: padding 1 space");
-								return ((int) ' ');
-							}
-						}
-						public int read(char[] cbuf, int off, int len) throws IOException {
-							try {
-								int r = super.read(cbuf, off, len);
-								nDataBuf.append(cbuf, off, r);
-								return r;
-							}
-							catch (IOException ioe) {
-								logWarning("ENR: padding " + len + " spaces");
-								Arrays.fill(cbuf, off, len, ' ');
-								return len;
-							}
-						}
-					});
+					for (int r; (nDataBuf.length() < nDataLength) && ((r = input.read()) != -1);)
+						nDataBuf.append((char) r);
+					Object nData = JsonParser.parseJson(new CharSequenceReader(nDataBuf));
+					
 					//	TODO validate against type ???
 					rec.receive(new Notification(nType, nPathInfo, nUserName, nData));
 					
@@ -227,7 +208,7 @@ public class GoldenGateENR extends AbstractGoldenGateServerComponent implements 
 				catch (Exception e) {
 					logError("GoldenGateENR: error forwarding '" + nTypeName + "' notification: " + e.getMessage());
 					logError(e);
-					logError("Request data read: " + nDataBuf);
+					logError("Request data read (" + nDataBuf.length() + " of expected " + nDataLength + "): " + nDataBuf);
 					
 					//	send error (hedging against null message)
 					output.write("" + e.getMessage());

@@ -116,19 +116,18 @@ public class GoldenGateServerWatchdog implements GoldenGateServerNetworkMonitori
 				System.out.println(" - test URL missing");
 				continue;
 			}
+			String testTimeout = urlTestSet.getSetting("timeout", "5");
+			if (!testTimeout.matches("[0-9]+")) {
+				System.out.println(" - invalid test timout: " + testTimeout);
+				continue;
+			}
 			String testFailServiceName = urlTestSet.getSetting("failServiceName");
 			if (testFailServiceName == null) {
 				System.out.println(" - test fail service name missing");
 				continue;
 			}
-			testUrl(testUrl, testFailServiceName);
+			testUrl(testUrl, testFailServiceName, Integer.parseInt(testTimeout));
 		}
-//		
-//		//	TODO get static test file via Tomcat
-//		testUrl("http://localhost:8080/GgServer/aliveTest.txt", "tomcat9.service");
-//		
-//		//	TODO get static test file via Apache
-//		testUrl("http://localhost/GgServer/aliveTest.txt", "apache2.service");
 	}
 	
 	private static final DateFormat timeDateFormat = new SimpleDateFormat("HH:mm:ss", Locale.US) {
@@ -142,11 +141,6 @@ public class GoldenGateServerWatchdog implements GoldenGateServerNetworkMonitori
 			System.out.println("Pinging GoldenGATE Server ...");
 			executeServerCommand(NETWORK_MONITOR_PING);
 			System.out.println(" ==> success");
-			
-			//	check if first run of hour
-			String time = timeDateFormat.format(new Date(System.currentTimeMillis()));
-			if (!time.matches("[0-9]{1,2}\\:0[0-4]:[0-9]{2}"))
-				return;
 		}
 		catch (IOException ioe) {
 			System.out.println(" ==> " + ioe.getMessage());
@@ -156,6 +150,16 @@ public class GoldenGateServerWatchdog implements GoldenGateServerNetworkMonitori
 		
 		//	print statistics of server state
 		String[] result;
+		
+		//	trigger garbage collection
+		result = executeServerCommand(NETWORK_MONITOR_GC);
+		for (int r = 0; r < result.length; r++)
+			System.out.println(result[r]);
+		
+		//	check if first run of hour
+		String time = timeDateFormat.format(new Date(System.currentTimeMillis()));
+		if (!time.matches("[0-9]{1,2}\\:0[0-4]:[0-9]{2}"))
+			return;
 		
 		//	get list of threads groups
 		result = executeServerCommand(NETWORK_MONITOR_LIST_THREAD_GROUPS);
@@ -274,15 +278,15 @@ public class GoldenGateServerWatchdog implements GoldenGateServerNetworkMonitori
 		}
 	}
 	
-	private static void testUrl(String testUrl, String testFailServiceName) throws IOException {
+	private static void testUrl(String testUrl, String testFailServiceName, int timeoutInSeconds) throws IOException {
 		
 		//	ping URL
 		try {
-			System.out.println("Testing URL '" + testUrl + "' ...");
+			System.out.println("Testing URL '" + testUrl + "' (timeout " + timeoutInSeconds + " seconds) ...");
 			HttpURLConnection testUrlCon = ((HttpURLConnection) new URL(testUrl).openConnection());
 			testUrlCon.setRequestMethod("GET");
-			testUrlCon.setConnectTimeout(5000);
-			testUrlCon.setReadTimeout(5000);
+			testUrlCon.setConnectTimeout(1000 * timeoutInSeconds);
+			testUrlCon.setReadTimeout(1000 * timeoutInSeconds);
 			InputStream testUrlIn = testUrlCon.getInputStream();
 			testUrlIn.read();
 			testUrlIn.close();
@@ -294,7 +298,7 @@ public class GoldenGateServerWatchdog implements GoldenGateServerNetworkMonitori
 			return;
 		}
 		catch (SocketTimeoutException ste) {
-			System.out.println(" ==> connection timed out after 5 seconds: " + ste.getMessage());
+			System.out.println(" ==> connection timed out after " + timeoutInSeconds + " seconds: " + ste.getMessage());
 		}
 		catch (IOException e) {
 			System.out.println(" ==> failed to connect to " + testUrl + ": " + e.getMessage());

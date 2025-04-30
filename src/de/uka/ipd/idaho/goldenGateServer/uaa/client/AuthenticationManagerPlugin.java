@@ -27,11 +27,6 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.uaa.client;
 
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-
-import javax.swing.JMenuItem;
-
 import de.uka.ipd.idaho.gamta.Annotation;
 import de.uka.ipd.idaho.gamta.util.gPath.GPath;
 import de.uka.ipd.idaho.gamta.util.gPath.GPathFunction;
@@ -42,6 +37,12 @@ import de.uka.ipd.idaho.gamta.util.gPath.types.GPathString;
 import de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin;
 import de.uka.ipd.idaho.goldenGate.plugins.ResourceManager;
 import de.uka.ipd.idaho.goldenGate.plugins.SettingsPanel;
+import de.uka.ipd.idaho.goldenGate.ui.GoldenGateUI;
+import de.uka.ipd.idaho.goldenGate.ui.GoldenGateUI.DocumentDisplay;
+import de.uka.ipd.idaho.goldenGate.ui.WindowMenuBar;
+import de.uka.ipd.idaho.goldenGate.ui.WindowMenuElement;
+import de.uka.ipd.idaho.goldenGate.ui.WindowMenuFunction;
+import de.uka.ipd.idaho.goldenGate.ui.WindowMenuStatusDisplay;
 import de.uka.ipd.idaho.goldenGate.util.ResourceSelector;
 
 /**
@@ -59,53 +60,82 @@ import de.uka.ipd.idaho.goldenGate.util.ResourceSelector;
 public class AuthenticationManagerPlugin extends AbstractGoldenGatePlugin implements ResourceManager {
 	
 //	private JMenuItem tmAccountItem = new JMenuItem("<Not Logged In>");
-	private ToolsMenuItem tmAccountItem = new ToolsMenuItem("<Not Logged In>");
-	private JMenuItem mmAccountItem = new JMenuItem("<Not Logged In>");
+//	private ToolsMenuItem tmAccountItem = new ToolsMenuItem("<Not Logged In>");
+//	private JMenuItem mmAccountItem = new JMenuItem("<Not Logged In>");
+	private WindowMenuStatusDisplay statusDisplay;
 	
 //	private JMenuItem tmLoginItem = new JMenuItem("Login");
-	private ToolsMenuItem tmLoginItem = new ToolsMenuItem("Login");
-	private JMenuItem mmLoginItem = new JMenuItem("Login");
+//	private ToolsMenuItem tmLoginItem = new ToolsMenuItem("Login");
+//	private JMenuItem mmLoginItem = new JMenuItem("Login");
+	private WindowMenuFunction loginFunction;
 	
 //	private JMenuItem tmLogoutItem = new JMenuItem("Logout");
-	private ToolsMenuItem tmLogoutItem = new ToolsMenuItem("Logout");
-	private JMenuItem mmLogoutItem = new JMenuItem("Logout");
+//	private ToolsMenuItem tmLogoutItem = new ToolsMenuItem("Logout");
+//	private JMenuItem mmLogoutItem = new JMenuItem("Logout");
+	private WindowMenuFunction logoutFunction;
 	
 	/** @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#init()
 	 */
 	public void init() {
 		
-		this.tmLoginItem.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent ae) {
+		//	populate flags
+		int wmeFlags = 0;
+		wmeFlags |= WindowMenuElement.PROPERTY_AVAILABLE_DESKTOP; // cannot work offline in web based UI
+		wmeFlags = WindowMenuElement.encodePreferredMenuName(WindowMenuBar.WINDOW_MENU_NAME, wmeFlags);
+		
+//		this.tmLoginItem.addActionListener(new ActionListener() {
+//			public void actionPerformed(ActionEvent ae) {
+//				logout();
+//				getAuthenticatedClient();
+//			}
+//		});
+//		this.mmLoginItem.addActionListener(new ActionListener() {
+//			public void actionPerformed(ActionEvent ae) {
+//				logout();
+//				getAuthenticatedClient();
+//			}
+//		});
+//		this.tmLoginItem.setEnabled(!AuthenticationManager.isAuthenticated());
+//		this.mmLoginItem.setEnabled(!AuthenticationManager.isAuthenticated());
+		this.loginFunction = new WindowMenuFunction(this, "login", "Login", "Log in to GoldenGATE Server", wmeFlags) {
+			public boolean checkAvailable(GoldenGateUI ggui, DocumentDisplay display) {
+				return !AuthenticationManager.isAuthenticated();
+			}
+			public void execute(GoldenGateUI ggui, DocumentDisplay display) {
 				logout();
 				getAuthenticatedClient();
 			}
-		});
-		this.mmLoginItem.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent ae) {
-				logout();
-				getAuthenticatedClient();
+		};
+		
+//		this.tmLogoutItem.addActionListener(new ActionListener() {
+//			public void actionPerformed(ActionEvent ae) {
+//				logout();
+//			}
+//		});
+//		this.mmLogoutItem.addActionListener(new ActionListener() {
+//			public void actionPerformed(ActionEvent ae) {
+//				logout();
+//			}
+//		});
+//		this.tmLogoutItem.setEnabled(AuthenticationManager.isAuthenticated());
+//		this.mmLogoutItem.setEnabled(AuthenticationManager.isAuthenticated());
+		this.logoutFunction = new WindowMenuFunction(this, "logout", "Logout", "Log out from GoldenGATE Server", wmeFlags) {
+			public boolean checkAvailable(GoldenGateUI ggui, DocumentDisplay display) {
+				return AuthenticationManager.isAuthenticated();
 			}
-		});
-		this.tmLoginItem.setEnabled(!AuthenticationManager.isAuthenticated());
-		this.mmLoginItem.setEnabled(!AuthenticationManager.isAuthenticated());
-		
-		
-		this.tmLogoutItem.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent ae) {
+			public void execute(GoldenGateUI ggui, DocumentDisplay display) {
 				logout();
 			}
-		});
-		this.mmLogoutItem.addActionListener(new ActionListener() {
-			public void actionPerformed(ActionEvent ae) {
-				logout();
+		};
+		
+//		this.tmAccountItem.setText(AuthenticationManager.isAuthenticated() ? ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))) : "<Not Logged In>");
+//		this.mmAccountItem.setText(AuthenticationManager.isAuthenticated() ? ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))) : "<Not Logged In>");
+		this.statusDisplay = new WindowMenuStatusDisplay(this, "status", "<Not Logged In>", "Not logged in on any GoldenGATE Server", wmeFlags) {
+			public boolean checkAvailable(GoldenGateUI ggui, DocumentDisplay display) {
+				return true;
 			}
-		});
-		this.tmLogoutItem.setEnabled(AuthenticationManager.isAuthenticated());
-		this.mmLogoutItem.setEnabled(AuthenticationManager.isAuthenticated());
-		
-		
-		this.tmAccountItem.setText(AuthenticationManager.isAuthenticated() ? ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))) : "<Not Logged In>");
-		this.mmAccountItem.setText(AuthenticationManager.isAuthenticated() ? ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))) : "<Not Logged In>");
+		};
+		this.updateStatusDisplay();
 		
 		//	initialize authentication manager if not done before
 		if (!AuthenticationManager.isInitialized())
@@ -120,6 +150,26 @@ public class AuthenticationManagerPlugin extends AbstractGoldenGatePlugin implem
 				return new GPathString((userName == null) ? "" : userName);
 			}
 		});
+	}
+	private void updateStatusDisplay() {
+		if (AuthenticationManager.isAuthenticated()) {
+			String statusLabel = ("Logged in as '" + AuthenticationManager.getUser() + "' on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort())));
+			String statusMessage = ("Logged in as user '" + AuthenticationManager.getUser() + "' on GoldenGATE Server at " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort())));
+			this.statusDisplay.setStatusInfo(statusLabel, statusMessage);
+			this.loginFunction.setDescription("Log in to other GoldenGATE Server");
+			this.logoutFunction.setDescription("Log out from GoldenGATE Server at " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort())));
+		}
+		else {
+			this.statusDisplay.setStatusInfo(null, null);
+			this.loginFunction.setDescription("Log in to GoldenGATE Server");
+			this.logoutFunction.setDescription("Log out from GoldenGATE Server");
+		}
+		this.statusDisplay.updateItems(null);
+		this.loginFunction.updateItems(null);
+		this.logoutFunction.updateItems(null);
+		GoldenGateUI ggUi = this.parent.getUserInterface();
+		if (ggUi != null)
+			ggUi.updateMenus();
 	}
 	
 	/** @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getSettingsPanel()
@@ -182,28 +232,36 @@ public class AuthenticationManagerPlugin extends AbstractGoldenGatePlugin implem
 	public String getMainMenuTitle() {
 		return "GG Server Accounts";
 	}
-
+//	
+//	/* (non-Javadoc)
+//	 * @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getMainMenuItems()
+//	 */
+//	public JMenuItem[] getMainMenuItems() {
+//		JMenuItem[] mis = {this.mmAccountItem, this.mmLoginItem, this.mmLogoutItem};
+//		return mis;
+//	}
+//	
+//	/* (non-Javadoc)
+//	 * @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getToolsMenuFunctionItems(de.uka.ipd.idaho.goldenGate.GoldenGateConstants.InvokationTargetProvider)
+//	 */
+//	public JMenuItem[] getToolsMenuFunctionItems(InvokationTargetProvider targetProvider) {
+//		JMenuItem[] mis = {this.tmAccountItem, this.tmLoginItem, this.tmLogoutItem};
+//		return mis;
+//	}
+	
 	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getMainMenuItems()
+	 * @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getWindowMenuElements()
 	 */
-	public JMenuItem[] getMainMenuItems() {
-		JMenuItem[] mis = {this.mmAccountItem, this.mmLoginItem, this.mmLogoutItem};
-		return mis;
-	}
-
-	/* (non-Javadoc)
-	 * @see de.uka.ipd.idaho.goldenGate.plugins.AbstractGoldenGatePlugin#getToolsMenuFunctionItems(de.uka.ipd.idaho.goldenGate.GoldenGateConstants.InvokationTargetProvider)
-	 */
-	public JMenuItem[] getToolsMenuFunctionItems(InvokationTargetProvider targetProvider) {
-		JMenuItem[] mis = {this.tmAccountItem, this.tmLoginItem, this.tmLogoutItem};
-		return mis;
+	public WindowMenuElement[] getWindowMenuElements() {
+		WindowMenuElement[] wmes = {this.statusDisplay, this.loginFunction, this.logoutFunction};
+		return wmes;
 	}
 	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGate.plugins.ResourceManager#getToolsMenuLabel()
 	 */
 	public String getToolsMenuLabel() {
-		return null;
+		return null; // cannot apply server accounts to documents
 	}
 	
 	/* (non-Javadoc)
@@ -268,22 +326,28 @@ public class AuthenticationManagerPlugin extends AbstractGoldenGatePlugin implem
 	 */
 	public AuthenticatedClient getAuthenticatedClient() {
 		AuthenticatedClient ac = AuthenticationManager.getAuthenticatedClient();
-		this.tmLoginItem.setEnabled(ac == null);
-		this.mmLoginItem.setEnabled(ac == null);
-		this.tmLogoutItem.setEnabled(ac != null);
-		this.mmLogoutItem.setEnabled(ac != null);
-		this.tmAccountItem.setText((ac == null) ? "<Not Logged In>" : ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))));
-		this.mmAccountItem.setText((ac == null) ? "<Not Logged In>" : ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))));
+//		this.tmLoginItem.setEnabled(ac == null);
+//		this.mmLoginItem.setEnabled(ac == null);
+//		this.tmLogoutItem.setEnabled(ac != null);
+//		this.mmLogoutItem.setEnabled(ac != null);
+//		this.tmAccountItem.setText((ac == null) ? "<Not Logged In>" : ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))));
+//		this.mmAccountItem.setText((ac == null) ? "<Not Logged In>" : ("Logged in on " + AuthenticationManager.getHost() + (AuthenticationManager.isUsingHttp() ? " via HTTP" : (":" + AuthenticationManager.getPort()))));
+		this.loginFunction.updateItems(null); // no need for menu owner, we're desktop-only
+		this.logoutFunction.updateItems(null); // no need for menu owner, we're desktop-only
+		this.updateStatusDisplay();
 		return ac;
 	}
 	
-	private void logout() {
+	void logout() {
 		AuthenticationManager.logout();
-		this.tmLoginItem.setEnabled(true);
-		this.mmLoginItem.setEnabled(true);
-		this.tmLogoutItem.setEnabled(false);
-		this.mmLogoutItem.setEnabled(false);
-		this.tmAccountItem.setText("<Not Logged In>");
-		this.mmAccountItem.setText("<Not Logged In>");
+//		this.tmLoginItem.setEnabled(true);
+//		this.mmLoginItem.setEnabled(true);
+//		this.tmLogoutItem.setEnabled(false);
+//		this.mmLogoutItem.setEnabled(false);
+//		this.tmAccountItem.setText("<Not Logged In>");
+//		this.mmAccountItem.setText("<Not Logged In>");
+		this.loginFunction.updateItems(null); // no need for menu owner, we're desktop-only
+		this.logoutFunction.updateItems(null); // no need for menu owner, we're desktop-only
+		this.updateStatusDisplay();
 	}
 }

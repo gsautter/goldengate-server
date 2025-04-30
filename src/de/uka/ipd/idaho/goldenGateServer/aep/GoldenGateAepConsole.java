@@ -27,8 +27,14 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.aep;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 
+import de.uka.ipd.idaho.easyIO.settings.Settings;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
 
 /**
@@ -46,10 +52,73 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 		super("AEP");
 	}
 	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#initComponent()
+	 */
+	protected void initComponent() {
+		
+		//	load list of passive starting letter codes
+		File spFile = new File(this.dataPath, "startPassive.cnfg");
+		if (spFile.exists()) try {
+			BufferedReader spBr = new BufferedReader(new InputStreamReader(new FileInputStream(spFile), "UTF-8"));
+			for (String spRow; (spRow = spBr.readLine()) != null;) {
+				spRow = spRow.trim();
+				if (spRow.length() == 0)
+					continue;
+				if (spRow.startsWith("//"))
+					continue;
+				GoldenGateAEP.setStartPassive(spRow);
+			}
+			spBr.close();
+		}
+		catch (IOException ioe) {
+			System.out.println("GoldenGateAEP: failed to load list of instance letter codes to start passive: " + ioe.getMessage());
+			ioe.printStackTrace(System.out);
+		}
+		
+		//	load maximum list of flushing instances
+		String maxFlushingInstances = this.configuration.getSetting("maxFlushingInstances");
+		if (maxFlushingInstances != null) try {
+			GoldenGateAEP.setMaximumFlushingEventHandlers(Integer.parseInt(maxFlushingInstances));
+		}
+		catch (RuntimeException re) {
+			System.out.println("GoldenGateAEP: invalid number of maximum flushing instances '" + maxFlushingInstances + "': " + re.getMessage());
+			re.printStackTrace(System.out);
+		}
+		
+		//	load maximum number of flushing instances per input source
+		Settings maxFlushingFromSet = this.configuration.getSubset("maxFlushingFrom");
+		String[] inputSources = maxFlushingFromSet.getKeys();
+		for (int s = 0; s < inputSources.length; s++) {
+			String maxFlushingFrom = maxFlushingFromSet.getSetting(inputSources[s]);
+			try {
+				GoldenGateAEP.setMaximumEventHandlersFlushingFrom(inputSources[s], Integer.parseInt(maxFlushingFrom));
+			}
+			catch (RuntimeException re) {
+				System.out.println("GoldenGateAEP: invalid number of maximum instances flushing from '" + inputSources[s] + "' '" + maxFlushingFrom + "': " + re.getMessage());
+				re.printStackTrace(System.out);
+			}
+		}
+		Settings maxFlushingToSet = this.configuration.getSubset("maxFlushingTo");
+		String[] outputDestinations = maxFlushingToSet.getKeys();
+		for (int d = 0; d < outputDestinations.length; d++) {
+			String maxFlushingTo = maxFlushingToSet.getSetting(outputDestinations[d]);
+			try {
+				GoldenGateAEP.setMaximumEventHandlersFlushingTo(outputDestinations[d], Integer.parseInt(maxFlushingTo));
+			}
+			catch (RuntimeException re) {
+				System.out.println("GoldenGateAEP: invalid number of maximum instances flushing to '" + outputDestinations[d] + "' '" + maxFlushingTo + "': " + re.getMessage());
+				re.printStackTrace(System.out);
+			}
+		}
+	}
+	
 	private static final String PAUSE_EVENT_PROCESSORS_COMMAND = "pause";
 	private static final String UNPAUSE_EVENT_PROCESSORS_COMMAND = "unpause";
 	private static final String LIST_EVENT_PROCESSORS_COMMAND = "list";
 	private static final String CHECK_EVENT_PROCESSORS_ALIVE_COMMAND = "checkAlive";
+	private static final String LIST_INPUT_SOURCES_COMMAND = "sources";
+	private static final String LIST_OUTPUT_DESTINATIONS_COMMAND = "dests";
 	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#getActions()
@@ -148,6 +217,61 @@ public class GoldenGateAepConsole extends AbstractGoldenGateServerComponent {
 		};
 		cal.add(ca);
 		
+		//	list input sources of all event processors
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return LIST_INPUT_SOURCES_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						LIST_INPUT_SOURCES_COMMAND + " <mode>",
+						"List the input sources of all installed event processors:",
+						"- <mode>: set to '-l' to list the individual event processors pulling data from each input source (optional)"
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length == 0) {
+					this.reportResult("These are the input sources the of event processors currently installed:");
+					GoldenGateAEP.listInputSources(" - ", this, false);
+				}
+				else if ((arguments.length == 1) && ("-l".equals(arguments[0]))) {
+					this.reportResult("These are the input sources the of event processors currently installed:");
+					GoldenGateAEP.listInputSources(" - ", this, true);
+				}
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at most mode '-l' as the only argument.");
+			}
+		};
+		cal.add(ca);
+		
+		//	list output destinations of all event processors
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return LIST_OUTPUT_DESTINATIONS_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						LIST_OUTPUT_DESTINATIONS_COMMAND + " <mode>",
+						"List the output destinations of all installed event processors:",
+						"- <mode>: set to '-l' to list the individual event processors pushing data to each output destination (optional)"
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length == 0) {
+					this.reportResult("These are the input destinations the of event processors currently installed:");
+					GoldenGateAEP.listOutputDestinations(" - ", this, false);
+				}
+				else if ((arguments.length == 1) && ("-l".equals(arguments[0]))) {
+					this.reportResult("These are the input destinations the of event processors currently installed:");
+					GoldenGateAEP.listOutputDestinations(" - ", this, true);
+				}
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at most mode '-l' as the only argument.");
+			}
+		};
+		cal.add(ca);
+		
+		//	finally ...
 		return ((ComponentAction[]) cal.toArray(new ComponentAction[cal.size()]));
 	}
 }

@@ -105,12 +105,12 @@ public class SlaveRuntimeUtils implements SlaveConstants {
 			
 			//	clean up log files older than 24 hours
 			if (cleanUpOlderThan == 0)
-				SlaveRuntimeUtils.cleanUpLogFiles(logFolder, logFilePrefix);
+				cleanUpLogFiles(logFolder, logFilePrefix);
 			else if (cleanUpOlderThan > 0)
-				SlaveRuntimeUtils.cleanUpLogFiles(logFolder, logFilePrefix, cleanUpOlderThan);
+				cleanUpLogFiles(logFolder, logFilePrefix, cleanUpOlderThan);
 			
 			//	set up logging (keep error stream going to master process, though)
-			SlaveRuntimeUtils.setUpLogFiles(logFolder, logFilePrefix, verbose, true);
+			setUpLogFiles(logFolder, logFilePrefix, verbose, true);
 		}
 		
 		//	silence standard output stream otherwise (keep error stream going to master process, though)
@@ -249,10 +249,10 @@ public class SlaveRuntimeUtils implements SlaveConstants {
 	}
 	
 	/**
-	 * Clean up log files older than 24 hours. This method obtains a list of
-	 * the files in the argument folder that start with the argument file name
-	 * prefix and end in <code>.log</code>, and deletes the ones whose last
-	 * modification happened before the argument threshold.
+	 * Clean up log files older than a given timestamp. This method obtains a
+	 * list of the files in the argument folder that start with the argument
+	 * file name prefix and end in <code>.log</code>, and deletes the ones
+	 * whose last modification happened before the argument threshold.
 	 * @param logFolder the folder in which to clean up the log files
 	 * @param logFilePrefix the file name prefix of the log files to clean up
 	 * @param cleanUpOlderThan the threshold for the last modification date of

@@ -35,7 +35,6 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -105,6 +104,18 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 	}
 	
 	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#prepareExit()
+	 */
+	public void prepareExit() {
+		
+		//	persist whatever dirty process control data we have in our cache
+		this.persistDirtyProcessControlData();
+		
+		//	have process control data store work off its pending maintenance jobs
+		this.pcdStore.finishMaintenance();
+	}
+	
+	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#exitComponent()
 	 */
 	protected void exitComponent() {
@@ -112,13 +123,8 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		//	shut down background persister
 		this.pcdPersister.shutdown();
 		
-		//	persist all dirty process control data (get IDs from cache keys)
-		ArrayList pcds = this.processControlDataCache.values();
-		for (int d = 0; d < pcds.size(); d++) {
-			ProcessControlData pcd = ((ProcessControlData) pcds.get(d));
-			this.persistProcessControlData(pcd.dataId, pcd);
-		}
-		this.processControlDataCache.clear();
+		//	dispose cache (also persists all dirty process control data)
+		this.processControlDataCache.dispose();
 		
 		//	shut down process control data store
 		this.pcdStore.shutdown();
@@ -148,13 +154,8 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 				return explanation;
 			}
 			public void performActionConsole(String[] arguments) {
-				if (arguments.length == 0) {
-					ArrayList pcds = processControlDataCache.values();
-					for (int d = 0; d < pcds.size(); d++) {
-						ProcessControlData pcd = ((ProcessControlData) pcds.get(d));
-						persistProcessControlData(pcd.dataId, pcd);
-					}
-				}
+				if (arguments.length == 0)
+					persistDirtyProcessControlData();
 				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
 			}
 		};
@@ -170,7 +171,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		return ((ComponentAction[]) cal.toArray(new ComponentAction[cal.size()]));
 	}
 	
-	private LruCache processControlDataCache = new LruCache("PcdCache", 128, Integer.MAX_VALUE, Integer.MAX_VALUE, (60 * 3) /* let regular persister do its thing under normal circumstances */, (60 * 7)) {
+	private LruCache processControlDataCache = new LruCache("PcdCache", 128, Integer.MAX_VALUE, (60 * 3) /* let regular persister do its thing under normal circumstances */, (60 * 7)) {
 		protected void valueRemoved(Object key, Object value, int hits, long lastAccess, String reason) {
 			persistProcessControlData(((String) key), ((ProcessControlData) value));
 		}
@@ -188,6 +189,15 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 			if (pcd == null)
 				this.logInfo(" - process control data object not found");
 			else this.persistProcessControlData(dataId, pcd);
+		}
+	}
+	void persistDirtyProcessControlData() {
+		synchronized (this.processControlDataCache) {
+			ArrayList pcds = this.processControlDataCache.values();
+			for (int d = 0; d < pcds.size(); d++) {
+				ProcessControlData pcd = ((ProcessControlData) pcds.get(d));
+				this.persistProcessControlData(pcd.dataId, pcd);
+			}
 		}
 	}
 	void persistProcessControlData(String dataId, ProcessControlData pcd) {
@@ -283,7 +293,8 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 			this.dataId = dataId;
 			this.prefix = null;
 			this.root = null;
-			this.valueTrays = Collections.synchronizedMap(new LinkedHashMap());
+//			this.valueTrays = Collections.synchronizedMap(new LinkedHashMap());
+			this.valueTrays = new LinkedHashMap(); // all accessing methods synchronized, no need for synchronizing map proper
 			this.createTime = System.currentTimeMillis();
 			this.cleanModTime = this.createTime;
 			this.modTime = this.createTime;
@@ -370,7 +381,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the double associated with the argument key
 		 */
 		public double getDouble(String key) {
-			return this.getLong(key, 0);
+			return this.getDouble(key, 0);
 		}
 		
 		/**
@@ -405,16 +416,77 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the string associated with the argument key
 		 */
 		public String getString(String key, String def) {
-			if ((key = this.sanitizeKey(key)) == null)
+			if ((key = sanitizeKey(key)) == null)
 				return null;
-			return this.getValue(key, def);
-		}
-		private String getValue(String key, String def) {
-			if (this.root == null) {
-				ValueTray vt = ((ValueTray) this.valueTrays.get(key));
-				return ((vt == null) ? def : vt.value);
-			}
+			else if (this.root == null)
+				return this.getValue(key, def);
 			else return this.root.getValue((this.prefix + "." + key), def);
+		}
+		private synchronized String getValue(String key, String def) {
+			ValueTray vt = ((ValueTray) this.valueTrays.get(key));
+			return ((vt == null) ? def : vt.value);
+		}
+		
+		/**
+		 * Check whether or not any keys are associated with values in this set
+		 * or subset of process control data values.
+		 * @return true if there are no keys, false otherwise
+		 */
+		public boolean isEmpty() {
+			return (this.size() == 0);
+		}
+		
+		/**
+		 * Retrieve the number of keys associated with values in this set or
+		 * subset of process control data values.
+		 * @return the number of keys
+		 */
+		public int size() {
+			return ((this.root == null) ? this.size(null) : this.root.size(this.prefix + "."));
+		}
+		private synchronized int size(String prefix) {
+			if (prefix == null)
+				return this.valueTrays.size();
+			if (this.valueTrays.isEmpty())
+				return 0;
+			int ck = 0;
+			for (Iterator kit = this.valueTrays.keySet().iterator(); kit.hasNext();) {
+				String key = ((String) kit.next());
+				if (key.startsWith(prefix))
+					ck++;
+			}
+			return ck;
+		}
+		
+		/* (non-Javadoc)
+		 * @see java.lang.Object#toString()
+		 */
+		public String toString() {
+			return ((this.root == null) ? this.toString(null) : this.root.toString(this.prefix + "."));
+		}
+		private synchronized String toString(String prefix) {
+			if (this.valueTrays.isEmpty())
+				return "{}";
+			String[] keys = ((String[]) this.valueTrays.keySet().toArray(new String[this.valueTrays.size()]));
+			Arrays.sort(keys);
+			StringBuffer toStr = new StringBuffer();
+			toStr.append("{");
+			for (int k = 0, ck = 0; k < keys.length; k++) {
+				if ((prefix == null) || keys[k].startsWith(prefix)) {
+					ValueTray vt = ((ValueTray) this.valueTrays.get(keys[k]));
+					if (ck++ != 0)
+						toStr.append(", ");
+					if (prefix == null)
+						toStr.append(keys[k]);
+					else toStr.append(keys[k].substring(prefix.length()));
+					toStr.append("=");
+					toStr.append(vt.value);
+				}
+				else if (0 < keys[k].compareTo(prefix)) // we're beyond anything that might start with given prefix
+					break;
+			}
+			toStr.append("}");
+			return toStr.toString();
 		}
 		
 		/**
@@ -425,7 +497,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		public String[] getKeys() {
 			return ((this.root == null) ? this.getKeys(null) : this.root.getKeys(this.prefix + "."));
 		}
-		private String[] getKeys(String prefix) {
+		private synchronized String[] getKeys(String prefix) {
 			String[] keys = ((String[]) this.valueTrays.keySet().toArray(new String[this.valueTrays.size()]));
 			Arrays.sort(keys);
 			if (prefix == null)
@@ -434,9 +506,9 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 			for (int k = 0; k < keys.length; k++) {
 				if (keys[k].startsWith(prefix)) {
 					if (ck < k)
-						keys[ck++] = keys[k];
+						keys[ck++] = keys[k].substring(prefix.length());
 				}
-				else if (keys[k].compareTo(prefix) < 0)
+				else if (0 < keys[k].compareTo(prefix)) // we're beyond anything that might start with given prefix
 					break;
 			}
 			return Arrays.copyOfRange(keys, 0, ck);
@@ -451,9 +523,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the value previously associated with the argument key
 		 */
 		public String setInt(String key, int value) {
-			if ((key = this.sanitizeKey(key)) == null)
-				return null;
-			return this.setValue(key, ("" + value));
+			return this.setString(key, ("" + value));
 		}
 		
 		/**
@@ -465,9 +535,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the value previously associated with the argument key
 		 */
 		public String setLong(String key, long value) {
-			if ((key = this.sanitizeKey(key)) == null)
-				return null;
-			return this.setValue(key, ("" + value));
+			return this.setString(key, ("" + value));
 		}
 		
 		/**
@@ -479,9 +547,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the value previously associated with the argument key
 		 */
 		public String setDouble(String key, double value) {
-			if ((key = this.sanitizeKey(key)) == null)
-				return null;
-			return this.setValue(key, ("" + value));
+			return this.setString(key, ("" + value));
 		}
 		
 		/**
@@ -493,9 +559,11 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the value previously associated with the argument key
 		 */
 		public String setString(String key, String value) {
-			if ((key = this.sanitizeKey(key)) == null)
+			if ((key = sanitizeKey(key)) == null)
 				return null;
-			return this.setValue(key, value);
+			else if (this.root == null)
+				return this.setValue(key, value);
+			else return this.root.setValue((this.prefix + "." + key), value);
 		}
 		
 		/**
@@ -506,28 +574,56 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 * @return the value previously associated with the argument key
 		 */
 		public String remove(String key) {
-			if ((key = this.sanitizeKey(key)) == null)
+			if ((key = sanitizeKey(key)) == null)
 				return null;
-			return this.setValue(key, null);
+			else if (this.root == null)
+				return this.setValue(key, null);
+			else return this.root.setValue((this.prefix + "." + key), null);
 		}
 		
 		/**
 		 * Clear this set or subsubset of process control data values.
 		 */
 		public void clear() {
-			if (this.root == null) {
-				boolean dirty = (this.valueTrays.size() != 0);
-				this.valueTrays.clear();
-				if (dirty)
-					this.markDirty();
-			}
+			if (this.root == null)
+				this.clear(null);
 			else this.root.clear(this.prefix + ".");
 		}
-		private void clear(String prefix) {
+		private synchronized void clear(String prefix) {
+			boolean dirty = false;
+			if (prefix == null) {
+				dirty = (this.valueTrays.size() != 0);
+				this.valueTrays.clear();
+			}
+			else for (Iterator kit = this.valueTrays.keySet().iterator(); kit.hasNext();) {
+				String key = ((String) kit.next());
+				if (key.startsWith(prefix)) {
+					kit.remove();
+					dirty = true;
+				}
+			}
+			if (dirty)
+				this.markDirty();
+		}
+		
+		/**
+		 * Clear all values last modified before a given pivot timestamp out of
+		 * this set or subsubset of process control data values.
+		 * @param pivotTime the timestamp to use as a pivot
+		 */
+		public void clearOlderThan(long pivotTime) {
+			if (this.root == null)
+				this.clearOlderThan("", pivotTime);
+			else this.root.clearOlderThan((this.prefix + "."), pivotTime);
+		}
+		private synchronized void clearOlderThan(String prefix, long pivotTime) {
 			boolean dirty = false;
 			for (Iterator kit = this.valueTrays.keySet().iterator(); kit.hasNext();) {
 				String key = ((String) kit.next());
-				if (key.startsWith(prefix)) {
+				if (!key.startsWith(prefix))
+					continue;
+				ValueTray vt = ((ValueTray) this.valueTrays.get(key));
+				if (vt.lastMod < pivotTime) {
 					kit.remove();
 					dirty = true;
 				}
@@ -544,13 +640,13 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		 */
 		public void persist() {
 			if (this.root == null) {
-				if (!this.isClean())
+				if (!this.isClean() && (this.host != null))
 					this.host.schedulePersistProcessControlData(this.dataId, 0);
 			}
 			else this.root.persist();
 		}
 		
-		private String sanitizeKey(String key) {
+		private static String sanitizeKey(String key) {
 			if (key == null)
 				return null;
 			key = key.trim();
@@ -559,31 +655,28 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 			return key.replaceAll("[^0-9a-zA-Z\\_\\-]", "_");
 		}
 		
-		private String setValue(String key, String value) {
-			if (this.root == null) {
-				ValueTray vt = ((ValueTray) this.valueTrays.get(key));
-				if (vt == null) {
-					if (value != null) {
-						vt = new ValueTray(value);
-						this.valueTrays.put(key, vt);
-						this.markDirty();
-					}
-					return null;
+		private synchronized String setValue(String key, String value) {
+			ValueTray vt = ((ValueTray) this.valueTrays.get(key));
+			if (vt == null) {
+				if (value != null) {
+					vt = new ValueTray(value);
+					this.valueTrays.put(key, vt);
+					this.markDirty();
 				}
-				else {
-					String old = vt.value;
-					if (value == null) {
-						this.valueTrays.remove(key);
-						this.markDirty();
-					}
-					else if (!old.equals(value)) {
-						vt.update(value);
-						this.markDirty();
-					}
-					return old;
-				}
+				return null;
 			}
-			else return this.root.setValue((this.prefix + "." + key), value);
+			else {
+				String old = vt.value;
+				if (value == null) {
+					this.valueTrays.remove(key);
+					this.markDirty();
+				}
+				else if (!old.equals(value)) {
+					vt.update(value);
+					this.markDirty();
+				}
+				return old;
+			}
 		}
 		
 		private static class ValueTray {
@@ -604,7 +697,8 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 		
 		private void markDirty() {
 			this.modTime = System.currentTimeMillis();
-			this.host.schedulePersistProcessControlData(this.dataId, (1000 * 60 * 2)); // schedule persisting in 2 minutes (barring further changes)
+			if (this.host != null)
+				this.host.schedulePersistProcessControlData(this.dataId, (1000 * 60 * 2)); // schedule persisting in 2 minutes (barring further changes)
 		}
 		
 		boolean isClean() {
@@ -615,7 +709,7 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 			this.cleanModTime = this.modTime;
 		}
 		
-		void writeTsv(BufferedWriter out) throws IOException {
+		synchronized void writeTsv(BufferedWriter out) throws IOException {
 			for (Iterator kit = this.valueTrays.keySet().iterator(); kit.hasNext();) {
 				String key = ((String) kit.next());
 				ValueTray vt = ((ValueTray) this.valueTrays.get(key));
@@ -647,6 +741,17 @@ public class GoldenGatePCD extends AbstractGoldenGateServerComponent {
 				pcd.valueTrays.put(key, new ValueTray(value, lastMod));
 			}
 			return pcd;
+		}
+		
+		/**
+		 * Create a dummy process control data container for a given data
+		 * object ID. Instances retrieved from this method are not persisted
+		 * and should only be used for test purposes.
+		 * @param dataId the data ID to tie the dummy instance to
+		 * @return a dummy instance tied to the argument data object ID
+		 */
+		public static ProcessControlData createDummyInstance(String dataId) {
+			return new ProcessControlData(null, dataId);
 		}
 	}
 }

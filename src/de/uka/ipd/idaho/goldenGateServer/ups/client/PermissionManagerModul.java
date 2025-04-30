@@ -49,7 +49,6 @@ import de.uka.ipd.idaho.stringUtils.StringVector;
  * @author sautter
  */
 public class PermissionManagerModul extends AuthenticatedWebClientModul implements GoldenGateUpsConstants {
-	
 	private static final String MODE_PARAMETER = "mode";
 	
 	private static final String EDIT_USER = "UPS_EDIT_USER";
@@ -152,14 +151,6 @@ public class PermissionManagerModul extends AuthenticatedWebClientModul implemen
 	 * @see de.uka.ipd.idaho.goldenGateServer.uaa.webClient.AuthenticatedWebClientModul#writePageContent(de.uka.ipd.idaho.goldenGateServer.uaa.client.AuthenticatedClient, de.uka.ipd.idaho.htmlXmlUtil.accessories.HtmlPageBuilder)
 	 */
 	public void writePageContent(AuthenticatedClient authClient, HtmlPageBuilder pageBuilder) throws IOException {
-//		// TODO Auto-generated method stub
-//		
-//	}
-//
-//	/* (non-Javadoc)
-//	 * @see de.uka.ipd.idaho.goldenGateServer.uaa.webClient.AuthenticatedWebClientModul#writePageContent(de.uka.ipd.idaho.goldenGateServer.uaa.client.AuthenticatedClient, javax.servlet.http.HttpServletRequest, java.lang.String, de.uka.ipd.idaho.htmlXmlUtil.accessories.HtmlPageBuilder)
-//	 */
-//	public void writePageContent(AuthenticatedClient authClient, HttpServletRequest request, String serverLink, HtmlPageBuilder pageBuilder) throws IOException {
 		GoldenGateUpsClient upsc = this.getUpsClient(authClient);
 		String mode = pageBuilder.request.getParameter(MODE_PARAMETER);
 		

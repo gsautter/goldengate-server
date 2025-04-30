@@ -27,15 +27,11 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.util;
 
-import java.lang.ref.Reference;
-import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Vector;
 
 import de.uka.ipd.idaho.gamta.util.CountingSet;
 import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
@@ -51,21 +47,25 @@ import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
  * @author sautter
  */
 public class LruCache {
+	private final WeakReference instanceRef;
 	private final String name;
 	private LinkedHashMap data;
+	
 	private int sizeLimit;
 	private int weightLimit;
-	private int softeningTimeSeconds;
 	private int weakeningTimeSeconds;
 	private int clearingTimeSeconds;
-	private char putMode;
+	private boolean putWeak;
+	
+	private long hitCount = 0;
+	private long missCount = 0;
 	
 	/**
 	 * @param name the name of the cache, for statistics
 	 * @param sizeLimit the maximum number of entries
 	 */
 	public LruCache(String name, int sizeLimit) {
-		this(name, sizeLimit, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
+		this(name, sizeLimit, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
 	}
 	
 	/**
@@ -74,36 +74,25 @@ public class LruCache {
 	 * @param weakeningTime number of idle seconds before moving an entry value to a weak reference (setting to zero effects behavior akin to <code>WeakHashMap</code>)
 	 */
 	public LruCache(String name, int sizeLimit, int weakeningTime) {
-		this(name, sizeLimit, Integer.MAX_VALUE, Integer.MAX_VALUE, weakeningTime, Integer.MAX_VALUE);
+		this(name, sizeLimit, Integer.MAX_VALUE, weakeningTime, Integer.MAX_VALUE);
 	}
 	
 	/**
 	 * @param name the name of the cache, for statistics
 	 * @param sizeLimit the maximum number of entries
 	 * @param weightLimit the maximum overall weight of the entries
-	 * @param softeningTime number of idle seconds before moving an entry value to a soft reference (setting to zero effects behavior akin to a <code>SoftHashMap</code>, if the latter existed)
 	 * @param weakeningTime number of idle seconds before moving an entry value to a weak reference (setting to zero effects behavior akin to <code>WeakHashMap</code>)
 	 * @param clearingTime number of idle seconds before removing an entry value altogether
 	 */
-	public LruCache(String name, int sizeLimit, int weightLimit, int softeningTime, int weakeningTime, int clearingTime) {
+	public LruCache(String name, int sizeLimit, int weightLimit, int weakeningTime, int clearingTime) {
 		this.name = name;
-		this.data = new LinkedHashMap((((sizeLimit * 4) + 3) / 3) /* use maximum size right away */, 0.75f /* JRE default */, true) {
-			protected boolean removeEldestEntry(Entry eldest) {
-				if (this.size() <= LruCache.this.sizeLimit)
-					return false;
-				ValueTray vt = ((ValueTray) eldest.getValue());
-				Object eldestValue = vt.getValueInternal();
-				if (eldestValue != null)
-					valueRemoved(eldest.getKey(), eldestValue, vt.hitCount, vt.lastAccessed, REMOVAL_REASON_SIZE);
-				return true;
-			}
-		};
+		this.data = new LinkedHashMap((((sizeLimit * 4) + 3) / 3) /* use maximum size right away */, 0.75f /* JRE default */, true);
 		this.sizeLimit = sizeLimit;
 		this.weightLimit = weightLimit;
-		this.softeningTimeSeconds = softeningTime;
 		this.weakeningTimeSeconds = weakeningTime;
 		this.clearingTimeSeconds = clearingTime;
-		this.putMode = ((this.weakeningTimeSeconds < 1) ? PUT_MODE_WEAK : ((this.softeningTimeSeconds < 1) ? PUT_MODE_SOFT : PUT_MODE_NORMAL));
+		this.putWeak = (this.weakeningTimeSeconds < 1);
+		this.instanceRef = new WeakReference(this);
 		registerInstance(this);
 	}
 	
@@ -112,11 +101,16 @@ public class LruCache {
 	 */
 	public synchronized Object get(Object key) {
 		ValueTray vt = ((ValueTray) this.data.get(key));
-		if (vt == null)
+		if (vt == null) {
+			this.missCount++;
 			return null;
+		}
 		Object value = vt.getValue();
 		if (value == null) // value reference cleared by GC, no use holding on to tray
 			this.data.remove(key);
+		if (value == null)
+			this.missCount++;
+		else this.hitCount++;
 		return value;
 	}
 	
@@ -129,7 +123,7 @@ public class LruCache {
 		int weight = this.getWeight(value);
 		if (this.weightLimit < weight)
 			return value;
-		ValueTray oldVt = ((ValueTray) this.data.put(key, new ValueTray(value, weight, this.putMode)));
+		ValueTray oldVt = ((ValueTray) this.data.put(key, new ValueTray(value, weight, this.putWeak)));
 		if (oldVt == null)
 			return null;
 		Object oldValue = oldVt.getValueInternal();
@@ -190,6 +184,23 @@ public class LruCache {
 	}
 	
 	/**
+	 * Dispose of the cache. This method first removes the cache from the list
+	 * of instances used by internal maintenance, and then clears out all the
+	 * entries, calling <code>valueRemoved()</code> for each one of them.
+	 */
+	public synchronized void dispose() {
+		unregisterInstance(this); // remove from maintenance cycle
+		ArrayList entries = new ArrayList(this.data.entrySet()); // using entry set leaves access order untouched, saving hassle
+		this.data.clear();
+		for (int e = 0; e < entries.size(); e++) {
+			Map.Entry entry = ((Map.Entry) entries.get(e));
+			Object key = entry.getKey();
+			ValueTray vt = ((ValueTray) entry.getValue());
+			this.valueRemoved(key, vt.getValueInternal(), vt.hitCount, vt.lastAccessed, REMOVAL_REASON_DISPOSED);
+		}
+	}
+	
+	/**
 	 * Provide the weight of a given cached value. This allows subclasses to
 	 * control the overall memory footprint of a cache, mainly in scenarios of
 	 * cached values varying widely in individual memory consumption. The
@@ -216,14 +227,14 @@ public class LruCache {
 	/** constant indicating a value object was removed because the overall content of the cache grew too heavy */
 	public static final String REMOVAL_REASON_WEIGHT = "weight";
 	
-	/** constant indicating a value object was moved to a <code>SoftReference</code> because it was last touched before the softening timeout, and <b>might be</b> removed by garbage collection at some point */
-	public static final String REMOVAL_REASON_SOFTENED = "softened";
-	
 	/** constant indicating a value object was moved to a <code>WeakReference</code> because it was last touched before the weakening timeout, and <b>might be</b> removed by garbage collection at any point */
 	public static final String REMOVAL_REASON_WEAKENED = "weakened";
 	
 	/** constant indicating a value object was removed because it was last touched before the clearing timeout */
 	public static final String REMOVAL_REASON_TIME = "time";
+	
+	/** constant indicating a value object was removed because the cache is being disposed of */
+	public static final String REMOVAL_REASON_DISPOSED = "disposed";
 	
 	/**
 	 * Take additional action as needed when a value is evicted by maintenance,
@@ -244,23 +255,18 @@ public class LruCache {
 	 */
 	protected void valueRemoved(Object key, Object value, int hits, long lastAccess, String reason) {}
 	
-	private static final char PUT_MODE_NORMAL = 'N'; // term is 'strong', but we need 'S' for 'soft'
-	private static final char PUT_MODE_SOFT = 'S';
-	private static final char PUT_MODE_WEAK = 'W';
 	private static class ValueTray {
 		long created = System.currentTimeMillis();
-		private char putMode; // char is cheaper then 8 byte reference to parent object in non-static class
+		private boolean putWeak;
 		private Object value;
-		private Reference valueRef;
+		private WeakReference valueRef;
 		int weight;
 		long lastAccessed = this.created;
 		int hitCount = 0;
-		ValueTray(Object value, int weight, char putMode) {
-			this.putMode = putMode;
-			if (this.putMode == PUT_MODE_WEAK)
+		ValueTray(Object value, int weight, boolean putWeak) {
+			this.putWeak = putWeak;
+			if (this.putWeak)
 				this.valueRef = new WeakReference(value);
-			else if (this.putMode == PUT_MODE_SOFT)
-				this.valueRef = new SoftReference(value);
 			else this.value = value;
 			this.weight = weight;
 		}
@@ -268,7 +274,7 @@ public class LruCache {
 			this.lastAccessed = System.currentTimeMillis();
 			this.hitCount++;
 			Object value = this.getValueInternal();
-			if ((value == null) || (this.value != null) || (this.putMode == PUT_MODE_SOFT) || (this.putMode == PUT_MODE_WEAK))
+			if ((value == null) || (this.value != null) || this.putWeak)
 				return value;
 			this.valueRef = null;
 			this.value = value;
@@ -281,26 +287,13 @@ public class LruCache {
 				return this.valueRef.get();
 			else return null;
 		}
-		boolean soften() {
-			if (this.value == null)
-				return false;
-			this.valueRef = new SoftReference(this.value);
-			this.value = null;
-			return true;
-		}
 		boolean weaken() {
-			if ((this.value == null) && (this.valueRef == null))
-				return false;
-			if (this.valueRef instanceof WeakReference)
-				return false;
-			Object value = this.getValueInternal();
-			if (value == null)
-				this.valueRef = null;
-			else {
-				this.valueRef = new WeakReference(value);
+			if ((this.value != null) && (this.valueRef == null)) {
+				this.valueRef = new WeakReference(this.value);
 				this.value = null;
+				return true;
 			}
-			return (this.valueRef != null);
+			else return false;
 		}
 		boolean isVoided() {
 			if (this.value != null)
@@ -311,19 +304,18 @@ public class LruCache {
 		}
 	}
 	
-	synchronized void runMaintenance() {
+	synchronized void runMaintenance(long time) {
 		cacheEntriesStrong.removeAll(this.name);
-		cacheEntriesSoft.removeAll(this.name);
 		cacheEntriesWeak.removeAll(this.name);
+		cacheEntryWeights.removeAll(this.name);
 		if (this.data.isEmpty())
 			return;
-		long time = System.currentTimeMillis();
 		ArrayList entries = new ArrayList(this.data.entrySet()); // using entry set leaves access order untouched
 		int voidCount = 0;
 		int weakenCount = 0;
-		int softenCount = 0;
 		int clearCount = 0;
 		int overweightCount = 0;
+		int oversizeCount = 0;
 		int weightSum = 0;
 		for (int e = 0; e < entries.size(); e++) {
 			Map.Entry entry = ((Map.Entry) entries.get(e));
@@ -332,12 +324,21 @@ public class LruCache {
 			if (vt.isVoided()) {
 				this.data.remove(key);
 				voidCount++;
+				entries.remove(e--);
 				continue;
 			}
 			if (this.weightLimit < (weightSum + vt.weight)) {
 				this.data.remove(key);
 				overweightCount++;
 				this.valueRemoved(key, vt.getValueInternal(), vt.hitCount, vt.lastAccessed, REMOVAL_REASON_WEIGHT);
+				entries.remove(e--);
+				continue;
+			}
+			if (this.sizeLimit <= e) {
+				this.data.remove(key);
+				oversizeCount++;
+				this.valueRemoved(key, vt.getValueInternal(), vt.hitCount, vt.lastAccessed, REMOVAL_REASON_SIZE);
+				entries.remove(e--);
 				continue;
 			}
 			long vtAgeSeconds = ((time - vt.lastAccessed + 500) / 1000);
@@ -345,6 +346,7 @@ public class LruCache {
 				this.data.remove(key);
 				clearCount++;
 				this.valueRemoved(key, vt.getValueInternal(), vt.hitCount, vt.lastAccessed, REMOVAL_REASON_TIME);
+				entries.remove(e--);
 				continue;
 			}
 			if (this.weakeningTimeSeconds < vtAgeSeconds) {
@@ -355,54 +357,76 @@ public class LruCache {
 //					System.out.println(" ==> " + vt.getValueInternal() + " in " + vt.valueRef);
 				}
 			}
-			else if (this.softeningTimeSeconds < vtAgeSeconds) {
-				Object value = vt.getValueInternal();
-				if (vt.soften()) {
-					softenCount++;
-					this.valueRemoved(key, value, vt.hitCount, vt.lastAccessed, REMOVAL_REASON_SOFTENED);
-//					System.out.println(" ==> " + vt.getValueInternal() + " in " + vt.valueRef);
-				}
-			}
 			weightSum += vt.weight;
 			if (vt.value != null)
 				cacheEntriesStrong.add(this.name);
-			else if (vt.valueRef instanceof SoftReference)
-				cacheEntriesSoft.add(this.name);
 			else if (vt.valueRef instanceof WeakReference)
 				cacheEntriesWeak.add(this.name);
+			cacheEntryWeights.add(this.name, vt.weight);
 		}
-		if ((voidCount + overweightCount + clearCount + weakenCount + softenCount) == 0)
+		if ((voidCount + overweightCount + oversizeCount + clearCount + weakenCount) == 0)
 			return;
-		System.out.println(this.name + ": " + this.data.size() + " entries retained, " + voidCount + " swept, " + clearCount + " cleared, " + overweightCount + " removed as too heavy, " + weakenCount + " weakened, " + softenCount + " softened in " + (System.currentTimeMillis() - time) + "ms");
+		System.out.println(this.name + ": " + this.data.size() + " entries retained (" + weakenCount + " weakened), " + voidCount + " swept, " + clearCount + " cleared, " + oversizeCount + " removed as too many, " + overweightCount + " removed as too heavy in " + (System.currentTimeMillis() - time) + "ms");
 	}
 	
-	private static Vector instances = new Vector(); // need to be synchronized, as instances might be created during when maintenance worker already running
+	/**
+	 * Retrieve the status strings of all extant instances of this class,
+	 * including information on overall content and weight as well as usage
+	 * and hit rate. The status strings in the returned array are in instance
+	 * creation order.
+	 * @return an array holding the status strings
+	 */
+	public static String[] getInstanceStatusStrings() {
+		ArrayList extantInstances = getExtantInstances();
+		ArrayList statusStrings = new ArrayList();
+		for (int i = 0; i < extantInstances.size(); i++) {
+			LruCache instance = ((LruCache) ((WeakReference) extantInstances.get(i)).get());
+			if (instance == null)
+				continue; // reclaimed during our way here, simply ignore it
+			int strongCount = cacheEntriesStrong.getCount(instance.name);
+			int weakCount = cacheEntriesWeak.getCount(instance.name);
+			int weight = cacheEntryWeights.getCount(instance.name);
+			long hitCount = instance.hitCount; // local copy hedges against concurrent modification
+			long missCount = instance.missCount; // local copy hedges against concurrent modification
+			long lookupCount = (hitCount + missCount);
+			int hitRate = ((int) ((lookupCount == 0) ? 0 : (((hitCount * 100) + (lookupCount / 2)) / lookupCount)));
+			statusStrings.add(instance.name + ": " + (strongCount + weakCount) + " entries (" + strongCount + "/" + weakCount + ") with overall weight " + weight + ", " + lookupCount + " lookups so far, hit rate " + hitRate + "% (" + hitCount + " hits vs. " + missCount + " misses)");
+		}
+		return ((String[]) statusStrings.toArray(new String[statusStrings.size()]));
+	}
+	
+	private static ArrayList instances = new ArrayList();
 	private static Thread maintenanceWorker = null;
-	private static AsynchronousWorkQueue maintenanceWorkerMonitor = null;
+//	private static AsynchronousWorkQueue maintenanceWorkerMonitor = null;
+	private static Object maintenanceWorkerMonitor = null;
 	private static CountingSet cacheEntriesStrong = new CountingSet(new HashMap());
-	private static CountingSet cacheEntriesSoft = new CountingSet(new HashMap());
 	private static CountingSet cacheEntriesWeak = new CountingSet(new HashMap());
+	private static CountingSet cacheEntryWeights = new CountingSet(new HashMap());
 	private static synchronized void registerInstance(LruCache instance) {
-		instances.add(new WeakReference(instance));
+		instances.add(instance.instanceRef);
 		if (maintenanceWorker != null)
 			return;
 		maintenanceWorker = new Thread("LruCacheMaintenanceWorker") {
 			public void run() {
+				long lastLogTime = System.currentTimeMillis();
 				while (true) {
 					try {
 						Thread.sleep(100);
 					} catch (InterruptedException ie) {}
-					for (int i = 0; i < instances.size(); i++) {
+					ArrayList extantInstances = getExtantInstances();
+					for (int i = 0; i < extantInstances.size(); i++) {
 						String instanceName = null;
 						try {
-							LruCache instance = ((LruCache) ((WeakReference) instances.get(i)).get());
+							LruCache instance = ((LruCache) ((WeakReference) extantInstances.get(i)).get());
 							if (instance == null)
-								instances.remove(i--); // reclaimed, no need to hold reference any longer
-							else {
-								instanceName = instance.name;
-								instance.runMaintenance();
-								Thread.sleep(Math.max(100, (1000 / instances.size())));
-							}
+								continue; // reclaimed during our way here, simply ignore it
+							long time = System.currentTimeMillis();
+							instanceName = instance.name;
+							instance.runMaintenance(time);
+							long perInstanceTime = (1000 / extantInstances.size()); // visit every instance once per second
+							long instanceTime = (System.currentTimeMillis() - time); // how long did we work on this one?
+							if (instanceTime < perInstanceTime) // still some time left, sleep some
+								Thread.sleep(Math.max(1, (perInstanceTime - instanceTime)));
 						}
 						catch (InterruptedException ie) { /* no use logging sleeping errors */ }
 						catch (Throwable t) {
@@ -410,27 +434,63 @@ public class LruCache {
 							t.printStackTrace(System.err);
 						}
 					}
-					synchronized (LruCache.class) /* need to synchronize to make sure we don't quit while new instance created */ {
-						if (instances.isEmpty()) /* must have cleared them all */ {
-							maintenanceWorker = null;
-							if (maintenanceWorkerMonitor != null)
-								maintenanceWorkerMonitor.dispose();
-							maintenanceWorkerMonitor = null;
-							return;
-						}
-					}
+					if (noExtantInstances())
+						return;
+					if (maintenanceWorkerMonitor != null)
+						continue; // in the back-end, we're reporting on demand
+					long logTime = System.currentTimeMillis();
+					if (logTime < (lastLogTime + (1000 * 60)))
+						continue; // let's not be all too verbose and only log every minute
+					System.out.println("LruCacheMaintenanceWorker: " + getStatusMessage());
+					lastLogTime = logTime;
 				}
 			}
 		};
 		maintenanceWorker.start();
-		maintenanceWorkerMonitor = new AsynchronousWorkQueue("LruCacheMaintenanceWorker") {
-			public String getStatus() {
-				int strong = cacheEntriesStrong.size();
-				int soft = cacheEntriesSoft.size();
-				int weak = cacheEntriesWeak.size();
-				return (this.name + ": got " + instances.size() + " caches with total of " + (strong + soft + weak) + " entries (" + strong + "/" + soft + "/" + weak + ")");
-			}
-		};
+		try {
+			maintenanceWorkerMonitor = new AsynchronousWorkQueue("LruCacheMaintenanceWorker") {
+				public String getStatus() {
+//					int strong = cacheEntriesStrong.size();
+//					int weak = cacheEntriesWeak.size();
+//					return (this.name + ": got " + instances.size() + " caches with total of " + (strong + weak) + " entries (" + strong + "/" + weak + ")");
+					return (this.name + ": " + getStatusMessage());
+				}
+			};
+		}
+		catch (Throwable t) { /* asynchronous work queue is not available (and of no use) in web front-end */ }
+	}
+	private static synchronized void unregisterInstance(LruCache instance) {
+		instances.remove(instance.instanceRef);
+	}
+	static synchronized ArrayList getExtantInstances() {
+		ArrayList extantInstances = new ArrayList();
+		for (int i = 0; i < instances.size(); i++) {
+			WeakReference instanceRef = ((WeakReference) instances.get(i));
+			if (instanceRef.get() == null)
+				instances.remove(i--);
+			else extantInstances.add(instanceRef);
+		}
+		return extantInstances; // create copy to avoid concurrent modification while reading in maintenance worker
+	}
+	static synchronized boolean noExtantInstances() {
+		for (int i = 0; i < instances.size(); i++) {
+			WeakReference instanceRef = ((WeakReference) instances.get(i));
+			if (instanceRef.get() == null)
+				instances.remove(i--);
+		}
+		if (instances.isEmpty()) /* must have cleared them all, or disposed of explicitly */ {
+			maintenanceWorker = null;
+			if (maintenanceWorkerMonitor != null)
+				((AsynchronousWorkQueue) maintenanceWorkerMonitor).dispose();
+			maintenanceWorkerMonitor = null;
+			return true;
+		}
+		else return false;
+	}
+	static String getStatusMessage() {
+		int strong = cacheEntriesStrong.size();
+		int weak = cacheEntriesWeak.size();
+		return ("got " + instances.size() + " caches with total of " + (strong + weak) + " entries (" + strong + "/" + weak + ")");
 	}
 //	
 //	//	TEST ONLY !!!
@@ -438,11 +498,11 @@ public class LruCache {
 //		runTest();
 //		while (maintenanceWorker != null) {
 //			Thread.sleep(1000 * 3);
-//			System.gc(); // simulate subsequent GCs, as maintenance worked needs to quit when last cache instance reclaimed
+//			System.gc(); // simulate subsequent GCs, as maintenance worker needs to quit when last cache instance reclaimed
 //		}
 //	}
 //	private static void runTest() throws Exception /* extra method so we can GC after cache instance out of scope (maintenance worker needs to quit) */ {
-//		LruCache lc = new LruCache("Test", 16, Integer.MAX_VALUE, 2, 5, 10) {
+//		LruCache lc = new LruCache("Test", 16, Integer.MAX_VALUE, 5, 10) {
 //			protected void valueRemoved(Object key, Object value, int hits, long lastAccess, String reason) {
 //				System.out.println("Value removed: " + key + " = " + value + " after " + hits + " hits due to " + reason);
 //			}
@@ -456,11 +516,6 @@ public class LruCache {
 //			Object key = ("test" + l + "key");
 //			System.out.println("Pre-wait: " + key + " = " + lc.get(key));
 //		}
-//		Thread.sleep(1000 * 3);
-//		for (int l = 0; l < 32; l++) /* should all be soft by now */ {
-//			Object key = ("test" + l + "key");
-//			System.out.println("Post-wait: " + key + " = " + lc.get(key));
-//		}
 //		Thread.sleep(1000 * 6);
 //		for (int l = 0; l < 32; l++) /* should all be weak by now */ {
 //			Object key = ("test" + l + "key");
@@ -471,5 +526,6 @@ public class LruCache {
 //			Object key = ("test" + l + "key");
 //			System.out.println("Post-GC: " + key + " = " + lc.get(key));
 //		}
+//		lc.dispose();
 //	}
 }

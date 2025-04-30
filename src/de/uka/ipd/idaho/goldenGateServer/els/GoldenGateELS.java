@@ -41,8 +41,8 @@ import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader;
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentInitializer;
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader;
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader.ComponentInitializer;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerActivityLogger;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants.GoldenGateServerEvent.EventLogger;
@@ -230,8 +230,8 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 		td.addColumn(DATA_ID_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, 32);
 		td.addColumn(DATA_ID_HASH_COLUMN_NAME, TableDefinition.INT_DATATYPE, 0);
 		td.addColumn(LINK_DETAIL_ID_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, 64);
-		td.addColumn(LINK_TYPE_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, 32);
-		td.addColumn(LINK_STRING_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, 128);
+		td.addColumn(LINK_TYPE_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, LINK_TYPE_MAX_LENGHT);
+		td.addColumn(LINK_STRING_COLUMN_NAME, TableDefinition.VARCHAR_DATATYPE, LINK_STRING_MAX_LENGHT);
 		td.addColumn(LINK_MODIFIED_COLUMN_NAME, TableDefinition.BIGINT_DATATYPE, 0);
 		td.addColumn(LINK_STATUS_COLUMN_NAME, TableDefinition.CHAR_DATATYPE, 1);
 		if (!this.io.ensureTable(td, true))
@@ -250,6 +250,17 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 				handleLinks(dataId);
 			}
 		};
+		int suspendBelowMB = -1;
+		int resumeAboveMB = -1;
+		try {
+			suspendBelowMB = Integer.parseInt(this.configuration.getSetting("suspendBelowMB", "-1"));
+			resumeAboveMB = Integer.parseInt(this.configuration.getSetting("resumeAboveMB", "-1"));
+		} catch (NumberFormatException nfe) {}
+		if (resumeAboveMB < suspendBelowMB) {
+			suspendBelowMB = -1;
+			resumeAboveMB = -1;
+		}
+		this.linkHandler.setSuspendResumeThresholds(suspendBelowMB, resumeAboveMB);
 		
 		//	load IDs of all data objects with suspended links
 		String loadQuery = "SELECT distinct(" + DATA_ID_COLUMN_NAME + ")" +
@@ -296,7 +307,7 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 		
 		//	load link writers
 		log.logInfo("Loading link writers ...");
-		Object[] linkWriters = GamtaClassLoader.loadComponents(
+		Object[] linkWriters = ComponentClassLoader.loadComponents(
 				dataPath,
 				LinkWriter.class,
 				new ComponentInitializer() {
@@ -343,6 +354,18 @@ public class GoldenGateELS extends AbstractGoldenGateServerComponent implements 
 			this.linkHandlers.remove(elh);
 	}
 	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#prepareExit()
+	 */
+	public void prepareExit() {
+		
+		//	suspend link handling activity
+		this.linkHandler.suspend();
+	}
+	
+	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#exitComponent()
+	 */
 	protected void exitComponent() {
 		
 		//	shut down handler service

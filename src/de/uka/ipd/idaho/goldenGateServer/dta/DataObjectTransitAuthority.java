@@ -31,13 +31,10 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.TreeSet;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
@@ -46,10 +43,10 @@ import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
 import de.uka.ipd.idaho.easyIO.util.JsonParser;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
-import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
 import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerEventService;
 import de.uka.ipd.idaho.goldenGateServer.dta.DataObjectTransitAuthority.DataObjectTransitEvent.DataObjectTransitEventListener;
 import de.uka.ipd.idaho.goldenGateServer.dta.DataObjectTransitAuthority.Inspector.TransitProblem;
+import de.uka.ipd.idaho.goldenGateServer.util.LruCache;
 
 /**
  * Central authority to grant or deny data objects to transit either between
@@ -451,7 +448,7 @@ MAYBE ALSO: make authorities static in general ...
 	 * @param cause the exception that caused the transit to fail
 	 */
 	public static void notifyDataObjectTransitFailed(String sourceClassName, String dataId, String dataLabel, String detailId, String detailLabel, String source, String destination, TransitDeniedException cause) {
-		notifyDataObjectTransitFailed(sourceClassName, dataId, dataLabel, detailId, detailLabel, source, destination, ((TransitDeniedException) cause).getReasons());
+		notifyDataObjectTransitFailed(sourceClassName, dataId, dataLabel, detailId, detailLabel, source, destination, cause.getReasons());
 	}
 	
 	/**
@@ -706,10 +703,14 @@ MAYBE ALSO: make authorities static in general ...
 		 * @param source the name of the source intending to push the data object
 		 * @param destination the name of the destination the source intends to
 		 *            push the data object to
+		 * @param isInitialTransit is the transit to check the initial transit of
+		 *            the data object or detail from the argument source to the
+		 *            argument destination, or has there been a successful transit
+		 *            before?
 		 * @throws TransitDeniedException to deny transit under conditions that
 		 *            cannot be listed as reasons (e.g. internal exceptions)
 		 */
-		public abstract TransitProblem[] getTransitProblems(String dataId, String detailId, String source, String destination) throws TransitDeniedException;
+		public abstract TransitProblem[] getTransitProblems(String dataId, String detailId, String source, String destination, boolean isInitialTransit) throws TransitDeniedException;
 		
 		/**
 		 * A single data transit problem, with a type and a free text
@@ -782,18 +783,41 @@ MAYBE ALSO: make authorities static in general ...
 	 * @param destination the name of the destination the source intends to
 	 *            push the data object to
 	 * @throws TransitDeniedException if a registered inspector denies transit
+	 * @deprecated use 5-argument version to check non-initial transits as well
 	 */
 	public static void checkTransit(String dataId, String detailId, String source, String destination) throws TransitDeniedException {
+		checkTransit(dataId, detailId, source, destination, true);
+	}
+	
+	/**
+	 * Check whether or not a data object or a detail thereof may transit from
+	 * a given source to a specific destination. The <code>detailId</code> may
+	 * be null; it is merely a means intended to facilitate fine-grained checks
+	 * if multiple details of the same data object intend to transit, rather
+	 * than the data object as a whole.
+	 * @param dataId the ID of the data object intending to transit
+	 * @param detailId the ID of the detail within the data object that will
+	 *            actually transit (may be null)
+	 * @param source the name of the source intending to push the data object
+	 * @param destination the name of the destination the source intends to
+	 *            push the data object to
+	 * @param isInitialTransit is the transit to check the initial transit of
+	 *            the data object or detail from the argument source to the
+	 *            argument destination, or has there been a successful transit
+	 *            before?
+	 * @throws TransitDeniedException if a registered inspector denies transit
+	 */
+	public static void checkTransit(String dataId, String detailId, String source, String destination, boolean isInitialTransit) throws TransitDeniedException {
 		
 		//	check blacklist and whitelist of own instance
-		if (instance != null)
-			instance.checkDatObjectTransit(dataId, detailId, source, destination);
+		if ((instance != null) && instance.checkDatObjectTransit(dataId, detailId, source, destination))
+			return; // data object or detail whitelisted, waive other checks
 		
 		//	consult any registered inspectors
 		LinkedHashSet transitDenialReasons = new LinkedHashSet();
 		for (int i = 0; i < inspectors.size(); i++) {
 			Inspector inspector = ((Inspector) inspectors.get(i));
-			TransitProblem[] gtps = inspector.getTransitProblems(dataId, detailId, source, destination);
+			TransitProblem[] gtps = inspector.getTransitProblems(dataId, detailId, source, destination, isInitialTransit);
 			if (gtps == null)
 				continue;
 			for (int p = 0; p < gtps.length; p++)
@@ -811,19 +835,20 @@ MAYBE ALSO: make authorities static in general ...
 	private static final String SOURCE_ATTRIBUTE = "source";
 	private static final String DESTINATION_ATTRIBUTE = "destination";
 	
-	private Map transitBlacklistCache = Collections.synchronizedMap(new LinkedHashMap() {
-		protected boolean removeEldestEntry(Entry eldest) {
-			return (this.size() > 128);
+	private LruCache transitBlacklistCache = new LruCache("DtaBlacklistCache", 128, Integer.MAX_VALUE, (60 * 10), (60 * 60)) {
+		protected void valueRemoved(Object key, Object value, int hits, long lastAccess, String reason) {
+			if (!REMOVAL_REASON_WEAKENED.equals(reason)) // cannot clear list on weakening, might still be used
+				((TransitRuleList) value).dispose();
 		}
-	});
-	private Map transitWhitelistCache = Collections.synchronizedMap(new LinkedHashMap() {
-		protected boolean removeEldestEntry(Entry eldest) {
-			return (this.size() > 128);
+	};
+	private LruCache transitWhitelistCache = new LruCache("DtaWhitelistCache", 128, Integer.MAX_VALUE, (60 * 10), (60 * 60)) {
+		protected void valueRemoved(Object key, Object value, int hits, long lastAccess, String reason) {
+			if (!REMOVAL_REASON_WEAKENED.equals(reason)) // cannot clear list on weakening, might still be used
+				((TransitRuleList) value).dispose();
 		}
-	});
+	};
 	
 	private IoProvider io;
-	private TransitRuleListCacheCleaner cacheCleaner = null;
 	
 	private boolean scrutinyOff = false;
 	
@@ -874,10 +899,6 @@ MAYBE ALSO: make authorities static in general ...
 		//	index document identifiers
 		this.io.indexColumn(DATA_TRANSIT_WHITELIST_TABLE_NAME, DATA_ID_ATTRIBUTE);
 		
-		//	start cache cleaner
-		this.cacheCleaner = new TransitRuleListCacheCleaner();
-		this.cacheCleaner.start();
-		
 		//	make ourselves available for blacklist/whitelist checks
 		instance = this;
 	}
@@ -893,9 +914,9 @@ MAYBE ALSO: make authorities static in general ...
 			this.io = null;
 		}
 		
-		//	shut down cache cleaner
-		if (this.cacheCleaner != null)
-			this.cacheCleaner.shutdown();
+		//	dispose of caches
+		this.transitBlacklistCache.dispose();
+		this.transitWhitelistCache.dispose();
 	}
 	
 	private static final String SCRUTINY_ON_COMMAND = "scrutinyOn";
@@ -1011,7 +1032,7 @@ MAYBE ALSO: make authorities static in general ...
 				}
 				public String[] getExplanation() {
 					String[] explanation = {
-							BLACKLIST_COMMAND + " <docId> <mode>",
+							BLACKLIST_COMMAND + " <dataId> <detailId> <source> <destination>",
 							"Blacklist a document or detail for transit from a source to a destination:",
 							"- <dataId>: the ID of the document to blacklist",
 							"- <detailId>: the ID of the document detail to blacklist (use '*' as wildcard)",
@@ -1061,7 +1082,6 @@ MAYBE ALSO: make authorities static in general ...
 	}
 	
 	private static class TransitRuleList {
-		long lastUsed = System.currentTimeMillis();
 		private TreeSet transits = new TreeSet(String.CASE_INSENSITIVE_ORDER);
 		private HashMap detailTransits = new HashMap();
 		TransitRuleList() {}
@@ -1070,7 +1090,6 @@ MAYBE ALSO: make authorities static in general ...
 			this.detailTransits.clear();
 		}
 		synchronized boolean contains(String detailId, String source, String destination) {
-			this.lastUsed = System.currentTimeMillis();
 			TreeSet transits = (((detailId == null) || (detailId.length() == 0) || "*".equals(detailId)) ? this.transits : ((TreeSet) this.detailTransits.get(detailId)));
 			if (transits == null)
 				return false;
@@ -1085,7 +1104,6 @@ MAYBE ALSO: make authorities static in general ...
 			return false;
 		}
 		synchronized void add(String detailId, String source, String destination) {
-			this.lastUsed = System.currentTimeMillis();
 			if ((detailId == null) || (detailId.length() == 0) || "*".equals(detailId))
 				this.transits.add(source + ">" + destination);
 			else {
@@ -1099,14 +1117,14 @@ MAYBE ALSO: make authorities static in general ...
 		}
 	}
 	
-	private TransitRuleList getTransitRuleList(String dataId, String tableName, Map cacheMap) {
+	private TransitRuleList getTransitRuleList(String dataId, String tableName, LruCache cache) {
 		if (this.io == null)
 			return null;
-		TransitRuleList trl = ((TransitRuleList) cacheMap.get(dataId));
+		TransitRuleList trl = ((TransitRuleList) cache.get(dataId));
 		if (trl != null)
 			return trl;
-		synchronized (cacheMap) {
-			trl = ((TransitRuleList) cacheMap.get(dataId));
+		synchronized (cache) {
+			trl = ((TransitRuleList) cache.get(dataId));
 			if (trl != null)
 				return trl;
 			String query = "SELECT " + DATA_DETAIL_ID_ATTRIBUTE + ", " + SOURCE_ATTRIBUTE + ", " + DESTINATION_ATTRIBUTE +
@@ -1116,9 +1134,10 @@ MAYBE ALSO: make authorities static in general ...
 			SqlQueryResult sqr = null;
 			try {
 				sqr = this.io.executeSelectQuery(query);
+				trl = new TransitRuleList(); // actually, do instantiate empty lists, as they will still save tons of database lookups
 				while (sqr.next()) {
-					if (trl == null) // prevent instantiating empty list
-						trl = new TransitRuleList();
+//					if (trl == null) // prevent instantiating empty list
+//						trl = new TransitRuleList();
 					String detailId = sqr.getString(0);
 					String source = sqr.getString(1);
 					String destination = sqr.getString(2);
@@ -1129,8 +1148,9 @@ MAYBE ALSO: make authorities static in general ...
 				 * not bear the risk of a deadlock because the guard list can
 				 * only exist as a local reference at this point, so no other
 				 * thread has any way of concurrently acquiring a lock on it */
-				if (trl != null)
-					cacheMap.put(dataId, trl);
+//				if (trl != null)
+//					cache.put(dataId, trl);
+				cache.put(dataId, trl);
 			}
 			catch (SQLException sqle) {
 				this.logError("GoldenGateEPH: " + sqle.getClass().getName() + " (" + sqle.getMessage() + ") while listing error protocols.");
@@ -1144,10 +1164,10 @@ MAYBE ALSO: make authorities static in general ...
 		return trl;
 	}
 	
-	private void addToTransitRuleList(ComponentActionConsole cac, String dataId, String detailId, String source, String destination, String tableName, Map cacheMap) {
+	private void addToTransitRuleList(ComponentActionConsole cac, String dataId, String detailId, String source, String destination, String tableName, LruCache cache) {
 		if ((detailId == null) || (detailId.trim().length() == 0))
 			detailId = "*";
-		TransitRuleList trl = this.getTransitRuleList(dataId, tableName, cacheMap);
+		TransitRuleList trl = this.getTransitRuleList(dataId, tableName, cache);
 		if ((trl != null) && trl.contains(detailId, source, destination)) {
 			cac.reportResult(" ==> already contained");
 			return;
@@ -1169,7 +1189,7 @@ MAYBE ALSO: make authorities static in general ...
 		}
 	}
 	
-	private void removeFromTransitRuleList(ComponentActionConsole cac, String dataId, String detailId, String source, String destination, String tableName, Map cacheMap) {
+	private void removeFromTransitRuleList(ComponentActionConsole cac, String dataId, String detailId, String source, String destination, String tableName, LruCache cache) {
 		if ((detailId != null) && (detailId.trim().length() == 0))
 			detailId = null;
 		String query = "DELETE FROM " + tableName +
@@ -1182,7 +1202,7 @@ MAYBE ALSO: make authorities static in general ...
 		try {
 			int deleted = this.io.executeUpdateQuery(query);
 			if (deleted != 0)
-				cacheMap.remove(dataId);
+				cache.remove(dataId);
 		}
 		catch (SQLException sqle) {
 			this.logError("GoldenGateEphDTC: Error adding rule for document '" + dataId + "': " + sqle.getMessage());
@@ -1190,16 +1210,16 @@ MAYBE ALSO: make authorities static in general ...
 		}
 	}
 	
-	void checkDatObjectTransit(String dataId, String detailId, String source, String destination) throws TransitDeniedException {
+	boolean checkDatObjectTransit(String dataId, String detailId, String source, String destination) throws TransitDeniedException {
 		
 		//	we're off duty ...
 		if (this.scrutinyOff)
-			return;
+			return false;
 		
 		//	check whitelist first
 		TransitRuleList whiteList = this.getTransitRuleList(dataId, DATA_TRANSIT_WHITELIST_TABLE_NAME, this.transitWhitelistCache);
 		if ((whiteList != null) && (detailId != null) && whiteList.contains(detailId, source, destination))
-			return;
+			return true;
 		
 		//	check blacklist
 		TransitRuleList blackList = this.getTransitRuleList(dataId, DATA_TRANSIT_BLACKLIST_TABLE_NAME, this.transitBlacklistCache);
@@ -1208,80 +1228,11 @@ MAYBE ALSO: make authorities static in general ...
 		
 		//	check for whole-document entries
 		if ((whiteList != null) && whiteList.contains(null, source, destination))
-			return;
+			return true;
 		if ((blackList != null) && blackList.contains(null, source, destination))
 			throw new TransitDeniedException("TransitAuthority", "blacklisted/object", ("Data object '" + dataId + "' is blacklisted for transits from " + source + " to " + destination + "."));
-	}
-	
-	private class TransitRuleListCacheCleaner extends Thread {
-		private boolean run = true;
-		private long cleanupDueTime;
-		TransitRuleListCacheCleaner() {
-			super("DtaCacheCleaner");
-		}
-		public void run() {
-			
-			//	add ourselves to monitoring
-			AsynchronousWorkQueue awq = new AsynchronousWorkQueue(this.getName()) {
-				public String getStatus() {
-					return (this.name + ": cleanup due in " + (cleanupDueTime - System.currentTimeMillis()) + "ms, cached are " + transitBlacklistCache.size() + " blacklists and " + transitWhitelistCache.size() + " whitelists");
-				}
-			};
-			
-			//	do the work
-			while (this.run) {
-				
-				//	sleep for some 10 minutes
-				long time = System.currentTimeMillis();
-				this.cleanupDueTime = (time + (1000 * 60 * 10));
-				while (time < this.cleanupDueTime) try {
-					sleep(this.cleanupDueTime - time);
-					break; // sleep ended normally, no need to loop
-				}
-				catch (InterruptedException ie) {
-					if (this.run) // start over sleeping if we're supposed to continue
-						time = System.currentTimeMillis();
-					else break; // return immediately on shutdown
-				}
-				
-				//	clean up everything not used in the past hour
-				long staleIfLastUsedBefore = (System.currentTimeMillis() - (1000 * 60 * 60));
-				
-				//	clean stale entries in blacklist cache
-				if (this.run && (transitBlacklistCache.size() != 0))
-					synchronized (transitBlacklistCache) {
-						ArrayList keys = new ArrayList(transitBlacklistCache.keySet());
-						for (int k = 0; this.run && (k < keys.size()); k++) {
-							Object key = keys.get(k);
-							TransitRuleList trl = ((TransitRuleList) transitBlacklistCache.get(key));
-							if ((trl != null) && (trl.lastUsed < staleIfLastUsedBefore)) {
-								transitBlacklistCache.remove(key);
-								trl.dispose();
-							}
-						}
-					}
-				
-				//	clean stale entries in whitelist cache
-				if (this.run && (transitWhitelistCache.size() != 0))
-					synchronized (transitWhitelistCache) {
-						ArrayList keys = new ArrayList(transitWhitelistCache.keySet());
-						for (int k = 0; this.run && (k < keys.size()); k++) {
-							Object key = keys.get(k);
-							TransitRuleList trl = ((TransitRuleList) transitWhitelistCache.get(key));
-							if ((trl != null) && (trl.lastUsed < staleIfLastUsedBefore)) {
-								transitWhitelistCache.remove(key);
-								trl.dispose();
-							}
-						}
-					}
-			}
-			
-			//	clean up
-			awq.dispose();
-		}
-		synchronized void shutdown() {
-			this.run = false;
-			this.interrupt();
-		}
+		
+		//	indicate not to waive further checks due to whilelist entry
+		return false;
 	}
 }

@@ -56,6 +56,7 @@ public class SlaveJob implements SlaveConstants {
 	private String resultPath;
 	private String logPath;
 	private Properties properties = new Properties();
+	private Properties systemProperties = new Properties();
 	
 	/** Constructor
 	 * @param slaveJobId the identifier of the slave job
@@ -231,7 +232,52 @@ public class SlaveJob implements SlaveConstants {
 			throw new IllegalArgumentException("Invalid property key '" + key + "' (illegal whitespace character)");
 		else if (key.indexOf("=") != -1)
 			throw new IllegalArgumentException("Invalid property key '" + key + "' (illegal equals character)");
+		else if ((value.indexOf("\r") != -1) || (value.indexOf("\n") != -1))
+			throw new IllegalArgumentException("Invalid property value '" + value + "' (illegal line break)");
 		else this.properties.setProperty(key, value);
+		return oldValue;
+	}
+	
+	/**
+	 * Retrieve a custom slave job system property.
+	 * @param key the name of the system property
+	 * @return the value of the system property
+	 */
+	public String getSystemProperty(String key) {
+		return this.systemProperties.getProperty(key);
+	}
+	
+	/**
+	 * Set a custom boolean slave job system property. In the slave job
+	 * execution command, the system properties appear before the JAR name,
+	 * prefixed with <code>-D</code>, i.e., <code>-D&lt;key&gt;=true</code>.
+	 * @param key the name of the system property
+	 * @return the previous value of the system property (if any)
+	 */
+	public String setSystemProperty(String key) {
+		return this.setSystemProperty(key, trueValue);
+	}
+	
+	/**
+	 * Set a custom slave job system property. Setting a system property to
+	 * <code>null</code> removes it. In the slave job execution command, the
+	 * system properties appear before the JAR name, prefixed with
+	 * <code>-D</code>, i.e., <code>-D&lt;key&gt;=&lt;value&gt;</code>. Values
+	 * that include whitespaces are automatically enclosed in quotes, i.e.,
+	 * <code>-D&lt;key&gt;=&quot;&lt;value&gt;&quot;</code>
+	 * @param key the name of the system property
+	 * @param value the value of the system property
+	 * @return the previous value of the system property (if any)
+	 */
+	public String setSystemProperty(String key, String value) {
+		String oldValue = this.systemProperties.getProperty(key);
+		if (value == null)
+			this.systemProperties.remove(key);
+		else if (!key.matches("[a-zA-Z\\_][a-zA-Z0-9\\-\\_\\.]*"))
+			throw new IllegalArgumentException("Invalid property key '" + key + "' (illegal character)");
+		else if ((value.indexOf("\r") != -1) || (value.indexOf("\n") != -1))
+			throw new IllegalArgumentException("Invalid property value '" + value + "' (illegal line break)");
+		else this.systemProperties.setProperty(key, value);
 		return oldValue;
 	}
 	
@@ -251,7 +297,16 @@ public class SlaveJob implements SlaveConstants {
 		if (this.maxMemory > 0)
 			command.addElement("-Xmx" + this.maxMemory + "m");
 		if (this.maxCores > 0)
-		command.addElement("-XX:ActiveProcessorCount=" + this.maxCores); // see https://stackoverflow.com/questions/33723373/can-i-set-the-number-of-threads-cpus-available-to-the-java-vm
+			command.addElement("-XX:ActiveProcessorCount=" + this.maxCores); // see https://stackoverflow.com/questions/33723373/can-i-set-the-number-of-threads-cpus-available-to-the-java-vm
+		
+		//	add custom system properties
+		for (Iterator kit = this.systemProperties.keySet().iterator(); kit.hasNext();) {
+			String key = ((String) kit.next());
+			String value = this.systemProperties.getProperty(key);
+			command.addElement(createSystemProperty(key, value));
+		}
+		
+		//	add JAR name
 		command.addElement(this.slaveJarName);
 		
 		//	add parameters general
@@ -289,6 +344,14 @@ public class SlaveJob implements SlaveConstants {
 		
 		//	finally ...
 		return command.toStringArray();
+	}
+	
+	private static String createSystemProperty(String key, String value) {
+		if (trueValue.equals(value))
+			return ("-D" + key + "=" + "true");
+		else if ((value.indexOf(" ") != -1) || (value.indexOf("\t") != -1))
+			return ("-D" + key + "=" + "\"" + value + "\"");
+		else return ("-D" + key + "=" + value);
 	}
 	
 	private static String createArgument(String name, String value) {

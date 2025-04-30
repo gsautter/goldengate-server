@@ -27,6 +27,13 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.aep;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URL;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,18 +41,24 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.LinkedList;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Properties;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
 import de.uka.ipd.idaho.easyIO.IoProvider;
 import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
+import de.uka.ipd.idaho.easyIO.util.JsonParser;
+import de.uka.ipd.idaho.gamta.util.CountingSet;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
 import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
+import de.uka.ipd.idaho.goldenGateServer.SuspendableWorkQueue;
 
 /**
  * GoldenGATE Server Asynchronous Event Processor (AEP) is a convenience super
@@ -68,20 +81,77 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	}
 	
 	static void listInstances(String prefix, ComponentActionConsole cac) {
-//		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
-//			String epName = ((String) enit.next());
 		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
 		for (int i = 0; i < instanceNames.size(); i++) {
 			String epName = ((String) instanceNames.get(i));
 			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
-			boolean isFlushingQueue = (flushingEventHandler == ep.eventHandler);
-			cac.reportResult(prefix + epName + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (isFlushingQueue ? " FLUSHING" : ""));
+//			boolean isFlushingQueue = (flushingEventHandler == ep.eventHandler);
+//			cac.reportResult(prefix + epName + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (isFlushingQueue ? " FLUSHING" : ""));
+			cac.reportResult(prefix + epName + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (ep.flushingEventHandler ? " FLUSHING" : ""));
+		}
+	}
+	
+	static void listInputSources(String prefix, ComponentActionConsole cac, boolean listEps) {
+		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
+		TreeMap sourcesToEps = new TreeMap();
+		for (int i = 0; i < instanceNames.size(); i++) {
+			String epName = ((String) instanceNames.get(i));
+			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
+			LinkedHashSet sourceEps = ((LinkedHashSet) sourcesToEps.get(ep.inputSource));
+			if (sourceEps == null) {
+				sourceEps = new LinkedHashSet();
+				sourcesToEps.put(ep.inputSource, sourceEps);
+			}
+			sourceEps.add(ep);
+		}
+		for (Iterator sit = sourcesToEps.keySet().iterator(); sit.hasNext();) {
+			String source = ((String) sit.next());
+			LinkedHashSet sourceEps = ((LinkedHashSet) sourcesToEps.get(source));
+			Integer sourceMaxFlushObj = ((Integer) maxEventHandlersFlushingFrom.get(source));
+			int sourceMaxFlushEps = ((sourceMaxFlushObj == null) ? 1 : sourceMaxFlushObj.intValue());
+			String sourceFlushStatus = ((sourceMaxFlushEps == 0) ? "no flushing allowed" : ("" + sourceMaxFlushEps + " allowed to flush at each time, " + eventHandlersFlushingFrom.getCount(source) + " flushing right now"));
+			if (listEps) {
+				cac.reportResult(prefix + source + " (pulled from by " + sourceEps.size() + " event processors, " + sourceFlushStatus + "):");
+				for (Iterator epit = sourceEps.iterator(); epit.hasNext();) {
+					GoldenGateAEP ep = ((GoldenGateAEP) epit.next());
+					cac.reportResult("  " + prefix + ep.getEventProcessorName() + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (ep.flushingEventHandler ? " FLUSHING" : ""));
+				}
+			}
+			else cac.reportResult(prefix + source + " (pulled from by " + sourceEps.size() + " event processors, " + sourceFlushStatus + ")");
+		}
+	}
+	
+	static void listOutputDestinations(String prefix, ComponentActionConsole cac, boolean listEps) {
+		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
+		TreeMap destsToEps = new TreeMap();
+		for (int i = 0; i < instanceNames.size(); i++) {
+			String epName = ((String) instanceNames.get(i));
+			GoldenGateAEP ep = ((GoldenGateAEP) instancesByName.get(epName));
+			LinkedHashSet destEps = ((LinkedHashSet) destsToEps.get(ep.outputDestination));
+			if (destEps == null) {
+				destEps = new LinkedHashSet();
+				destsToEps.put(ep.outputDestination, destEps);
+			}
+			destEps.add(ep);
+		}
+		for (Iterator dit = destsToEps.keySet().iterator(); dit.hasNext();) {
+			String dest = ((String) dit.next());
+			LinkedHashSet destEps = ((LinkedHashSet) destsToEps.get(dest));
+			Integer destMaxFlushObj = ((Integer) maxEventHandlersFlushingTo.get(dest));
+			int destMaxFlushEps = ((destMaxFlushObj == null) ? 1 : destMaxFlushObj.intValue());
+			String destFlushStatus = ((destMaxFlushEps == 0) ? "no flushing allowed" : ("" + destMaxFlushEps + " allowed to flush at each time, " + eventHandlersFlushingTo.getCount(dest) + " flushing right now"));
+			if (listEps) {
+				cac.reportResult(prefix + dest + " (pushed to by " + destEps.size() + " event processors, " + destFlushStatus + "):");
+				for (Iterator epit = destEps.iterator(); epit.hasNext();) {
+					GoldenGateAEP ep = ((GoldenGateAEP) epit.next());
+					cac.reportResult("  " + prefix + ep.getEventProcessorName() + ": " + ep.getClass().getName() + ", " + ep.eventQueue.size() + " update events pending (" + ep.eventQueue.highPriorityQueue.size() + "/" + ep.eventQueue.normPriorityQueue.size() + "/" + ep.eventQueue.lowPriorityQueue.size() + ")" + (ep.flushingEventHandler ? " FLUSHING" : ""));
+				}
+			}
+			else cac.reportResult(prefix + dest + " (pushed to by " + destEps.size() + " event processors, " + destFlushStatus + ")");
 		}
 	}
 	
 	static void checkInstances(String prefix, ComponentActionConsole cac) {
-//		for (Iterator enit = instancesByName.keySet().iterator(); enit.hasNext();) {
-//			String epName = ((String) enit.next());
 		ArrayList instanceNames = new ArrayList(instancesByName.keySet());
 		for (int i = 0; i < instanceNames.size(); i++) {
 			String epName = ((String) instanceNames.get(i));
@@ -92,33 +162,120 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		}
 	}
 	
-	private static DataEventHandler flushingEventHandler = null;
-	private static synchronized boolean setFlushingEventHandler(DataEventHandler deh, boolean flushing) {
+	private static TreeSet startPassiveLetterCodes = new TreeSet(String.CASE_INSENSITIVE_ORDER);
+	static void setStartPassive(String letterCode) {
+		if (letterCode != null)
+			startPassiveLetterCodes.add(letterCode);
+	}
+	
+//	private static DataEventHandler flushingEventHandler = null; // TODO make this a limited size list to enable some parallel flushing
+//	private static synchronized boolean setFlushingEventHandler(DataEventHandler deh, boolean flushing) {
+//		
+//		//	we need to know who's calling
+//		if (deh == null)
+//			return false;
+//		
+//		//	there's already someone flushing, allow only one at a time
+//		if ((flushingEventHandler != null) && flushing)
+//			return (flushingEventHandler == deh); // success only if flushing handler announces itself a second time
+//		
+//		//	start flushing (set flushing handler
+//		else if ((flushingEventHandler == null) && flushing) {
+//			flushingEventHandler = deh;
+//			deh.flushing = true;
+//			return true;
+//		}
+//		
+//		//	stop flushing (only allowed for flushing handler)
+//		else if ((flushingEventHandler == deh) && !flushing) {
+//			flushingEventHandler = null;
+//			deh.flushing = false;
+//			return true;
+//		}
+//		
+//		//	nobody there to stop flushing, or not authorized to do so
+//		else return false;
+//	}
+	
+	static void setMaximumFlushingEventHandlers(int mfehs) {
+		if (0 < mfehs)
+			maxFlushingEventHandlers = mfehs;
+	}
+	
+	static void setMaximumEventHandlersFlushingFrom(String source, int mfehs) {
+		if ((source != null) && (0 <= mfehs)) // allow zero to indicate 'no flushing from this source'
+			maxEventHandlersFlushingFrom.put(source, new Integer(mfehs));
+	}
+	
+	static void setMaximumEventHandlersFlushingTo(String destination, int mfehs) {
+		if ((destination != null) && (0 <= mfehs)) // allow zero to indicate 'no flushing to this destination'
+			maxEventHandlersFlushingTo.put(destination, new Integer(mfehs));
+	}
+	
+	private static int maxFlushingEventHandlers = 1;
+	private static TreeMap maxEventHandlersFlushingFrom = new TreeMap(String.CASE_INSENSITIVE_ORDER);
+	private static TreeMap maxEventHandlersFlushingTo = new TreeMap(String.CASE_INSENSITIVE_ORDER);
+	private static int flushingEventHandlers = 0;
+	private static CountingSet eventHandlersFlushingFrom = new CountingSet(new TreeMap(String.CASE_INSENSITIVE_ORDER));
+	private static CountingSet eventHandlersFlushingTo = new CountingSet(new TreeMap(String.CASE_INSENSITIVE_ORDER));
+	private static synchronized String setFlushingEventHandler(GoldenGateAEP aep, DataEventHandler deh, boolean flushing) {
 		
 		//	we need to know who's calling
-		if (deh == null)
-			return false;
+		if ((deh == null) || (aep == null))
+			return null;
 		
-		//	there's already someone flushing, allow only one at a time
-		if ((flushingEventHandler != null) && flushing)
-			return (flushingEventHandler == deh); // success only if flushing handler announces itself a second time
+		//	get maximums for source and destination
+		Integer maxFlushingFromSourceObj = ((Integer) maxEventHandlersFlushingFrom.get(aep.inputSource));
+		int maxFlushingFromSource = ((maxFlushingFromSourceObj == null) ? 1 : maxFlushingFromSourceObj.intValue());
+		Integer maxFlushingToDestObj = ((Integer) maxEventHandlersFlushingTo.get(aep.outputDestination));
+		int maxFlushingToDest = ((maxFlushingToDestObj == null) ? 1 : maxFlushingToDestObj.intValue());
+		
+		//	get current flushing load for source and destination
+		int flushingFromSource = eventHandlersFlushingFrom.getCount(aep.inputSource);
+		int flushingToDest = eventHandlersFlushingTo.getCount(aep.outputDestination);
+		
+		//	there's already the maximum number of instances flushing, enforce limit
+		if ((flushingEventHandlers == maxFlushingEventHandlers) && flushing)
+			return (aep.flushingEventHandler ? null : ("Cannot not activate flushing mode, only " + ((maxFlushingEventHandlers == 1) ? "one flushing instance" : (maxFlushingEventHandlers + " flushing instances")) + " are allowed at each time.")); // success only if flushing handler announces itself a second time
+		
+		//	check if input source disabled altogether
+		else if ((maxFlushingFromSource == 0) && flushing)
+			return ("Cannot not activate flushing mode, flushing from " + aep.inputSource + " is disabled.");
+		
+		//	check if output destination disabled altogether
+		else if ((maxFlushingToDest == 0) && flushing)
+			return ("Cannot not activate flushing mode, flushing to " + aep.outputDestination + " is disabled.");
+		
+		//	enforce limit on input source
+		else if ((flushingFromSource == maxFlushingFromSource) && flushing)
+			return (aep.flushingEventHandler ? null : ("Cannot not activate flushing mode, only " + ((maxFlushingFromSource == 1) ? "one instance" : (maxFlushingFromSource + " instances")) + " can flush from " + aep.inputSource + " at each time.")); // success only if flushing handler announces itself a second time
+		
+		//	enforce limit on output destination
+		else if ((flushingToDest == maxFlushingToDest) && flushing)
+			return (aep.flushingEventHandler ? null : ("Cannot not activate flushing mode, only " + ((maxFlushingToDest == 1) ? "one instance" : (maxFlushingToDest + " instances")) + " can flush to " + aep.outputDestination + " at each time.")); // success only if flushing handler announces itself a second time
 		
 		//	start flushing (set flushing handler
-		else if ((flushingEventHandler == null) && flushing) {
-			flushingEventHandler = deh;
+		else if ((flushingEventHandlers < maxFlushingEventHandlers) && !aep.flushingEventHandler && flushing) {
+			flushingEventHandlers++;
+			eventHandlersFlushingFrom.add(aep.inputSource);
+			eventHandlersFlushingTo.add(aep.outputDestination);
+			aep.flushingEventHandler = true;
 			deh.flushing = true;
-			return true;
+			return null;
 		}
 		
 		//	stop flushing (only allowed for flushing handler)
-		else if ((flushingEventHandler == deh) && !flushing) {
-			flushingEventHandler = null;
+		else if (aep.flushingEventHandler && !flushing) {
+			flushingEventHandlers--;
+			eventHandlersFlushingFrom.remove(aep.inputSource);
+			eventHandlersFlushingTo.remove(aep.outputDestination);
+			aep.flushingEventHandler = false;
 			deh.flushing = false;
-			return true;
+			return null;
 		}
 		
 		//	nobody there to stop flushing, or not authorized to do so
-		else return false;
+		else return "Cannot interrupt flushing instances";
 	}
 	
 	static final Object aepPauseLock = new Object();
@@ -174,6 +331,10 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	
 	private final String EVENT_TABLE_NAME;
 	private final String eventProcessorName;
+	
+	private boolean flushingEventHandler = false; // far easier and more thread safe to keep set containment in individual instance field (not too dissimilar from ThreadLocal)
+	private String inputSource = "local";
+	private String outputDestination = "generic";;
 	
 	/**
 	 * Constructor. The argument event processor name must consist of letters
@@ -256,6 +417,20 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		//	add indexes
 		this.io.indexColumn(EVENT_TABLE_NAME, DATA_ID_COLUMN_NAME);
 		this.io.indexColumn(EVENT_TABLE_NAME, DATA_ID_HASH_COLUMN_NAME);
+		
+		//	get input source and output destination
+		String inputSource = this.configuration.getSetting("inputSource");
+		if ((inputSource != null) && (inputSource.length() != 0)) {
+			inputSource = inputSource.trim();
+			if (inputSource.length() != 0)
+				this.inputSource = inputSource;
+		}
+		String outputDestination = this.configuration.getSetting("outputDestination");
+		if ((outputDestination != null) && (outputDestination.length() != 0)) {
+			outputDestination = outputDestination.trim();
+			if (outputDestination.length() != 0)
+				this.outputDestination = outputDestination;
+		}
 	}
 	
 	/**
@@ -267,7 +442,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	public void linkInit() {
 		
 		//	restore events from database (no need for synchronizing just yet, as we're starting event handler only below)
-		String loadQuery = "SELECT " + DATA_ID_COLUMN_NAME + ", " + TIMESTAMP_COLUMN_NAME + ", " + USER_COLUMN_NAME + ", " + TYPE_COLUMN_NAME + ", " + PRIORITY_COLUMN_NAME + ", " + PRIORITY_COLUMN_NAME + 
+		String loadQuery = "SELECT " + DATA_ID_COLUMN_NAME + ", " + TIMESTAMP_COLUMN_NAME + ", " + USER_COLUMN_NAME + ", " + TYPE_COLUMN_NAME + ", " + PRIORITY_COLUMN_NAME + ", " + PARAMS_COLUMN_NAME + 
 				" FROM " + EVENT_TABLE_NAME +
 				" ORDER BY " + TIMESTAMP_COLUMN_NAME +
 				";";
@@ -294,12 +469,16 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		System.out.println(this.getEventProcessorName() + ": event handler started");
 	}
 	
-	boolean startEventHandler() {
+	private boolean startEventHandler() {
 		if ((this.eventHandler != null) && this.eventHandler.isAlive())
 			return false;
 		if (this.eventQueueMonitor != null)
 			this.eventQueueMonitor.dispose();
-		this.eventHandler = new DataEventHandler(this.getEventProcessorName() + "EventHandler");
+		if (this.eventQueueManager != null)
+			this.eventQueueManager.dispose();
+		if (this.flushingEventHandler && (this.eventHandler != null))
+			setFlushingEventHandler(this, this.eventHandler, false); // make damn sure flushing status of instance and event handler stay in sync
+		this.eventHandler = new DataEventHandler((this.getEventProcessorName() + "EventHandler"), startPassiveLetterCodes.contains(this.getLetterCode()));
 		this.eventHandler.start();
 		this.eventQueueMonitor = new AsynchronousWorkQueue(this.getEventProcessorName()) {
 			public String getStatus() {
@@ -316,15 +495,56 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				else if (GoldenGateAEP.this.eventHandler.eventEnd != -1)
 					eventProcessorStatus = ("last event finished " + (System.currentTimeMillis() - GoldenGateAEP.this.eventHandler.eventEnd) + "ms ago");
 				else eventProcessorStatus = null;
-				String eventProcessingMode = ((GoldenGateAEP.this.eventHandler == flushingEventHandler) ? ", FLUSHING" : "");
+//				String eventProcessingMode = ((GoldenGateAEP.this.eventHandler == flushingEventHandler) ? ", FLUSHING" : "");
+				String eventProcessingMode = (GoldenGateAEP.this.flushingEventHandler ? ", FLUSHING" : "");
 				if (aepPause)
 					eventProcessingMode += ((aepPausedInstances.contains(GoldenGateAEP.this.eventHandler)) ? ", PAUSED" : ", PAUSING");
 				else if (!GoldenGateAEP.this.eventHandler.active)
 					eventProcessingMode += ((GoldenGateAEP.this.eventHandler.eventStart == -1) ? ", PASSIVE" : ", GOING PASSIVE");
+				else if (GoldenGateAEP.this.eventHandler.suspended)
+					eventProcessingMode += ((GoldenGateAEP.this.eventHandler.eventStart == -1) ? ", SUSPENDED" : ", SUSPENDING");
 				return (this.name + ": " + eventQueueStatus + eventProcessingMode + ((eventProcessorStatus == null) ? "" : (", " + eventProcessorStatus)));
 			}
 		};
+		int suspendBelowMB = -1;
+		int resumeAboveMB = -1;
+		try {
+			suspendBelowMB = Integer.parseInt(this.configuration.getSetting((this.letterCode + ".suspendBelowMB"), this.configuration.getSetting("suspendBelowMB", "-1")));
+			resumeAboveMB = Integer.parseInt(this.configuration.getSetting((this.letterCode + ".resumeAboveMB"), this.configuration.getSetting("resumeAboveMB", "-1")));
+		} catch (NumberFormatException nfe) {}
+		if (resumeAboveMB < suspendBelowMB) {
+			suspendBelowMB = -1;
+			resumeAboveMB = -1;
+		}
+		if ((0 < suspendBelowMB) && (0 < resumeAboveMB))
+			this.eventQueueManager = new SuspendableWorkQueue(this.getEventProcessorName(), suspendBelowMB, resumeAboveMB) {
+				public boolean suspend() {
+					if (aepPause)
+						return false;
+					else if (GoldenGateAEP.this.eventHandler.active)
+						return GoldenGateAEP.this.eventHandler.setSuspended(true);
+					else return false;
+				}
+				public boolean isSuspended() {
+					return GoldenGateAEP.this.eventHandler.suspended;
+				}
+				public void resume() {
+					GoldenGateAEP.this.eventHandler.setSuspended(false);
+				}
+			};
 		return true;
+	}
+	
+	/**
+	 * This method takes asynchronous event handling out of flushing mode if
+	 * required, and passivates the event handler so it ceases to process
+	 * events, but still receives and persists any newly arriving events for
+	 * later processing. Sub classes overwriting this method thus have to make
+	 * the super call.
+	 * @see de.goldenGateScf.AbstractServerComponent#prepareExit()
+	 */
+	public void prepareExit() {
+		this.eventHandler.prepareShutdown();
 	}
 	
 	/**
@@ -337,12 +557,120 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		//	shut down event handle
 		if (this.eventQueueMonitor != null)
 			this.eventQueueMonitor.dispose();
+		if (this.eventQueueManager != null)
+			this.eventQueueManager.dispose();
 		if (this.eventHandler != null)
 			this.eventHandler.shutdown();
 		System.out.println(this.getEventProcessorName() + ": event handler shut down");
 		
 		//	disconnect from database
 		this.io.close();
+	}
+	
+	/**
+	 * wrapper class for GoldenGATE Server events allowing filed access via
+	 * a JSON style property getter.
+	 * 
+	 * @author sautter
+	 */
+	protected static class AepDataEvent {
+		
+		/** the actual event to check */
+		public final GoldenGateServerEvent gse;
+		
+		private Map json = null;
+		AepDataEvent(GoldenGateServerEvent gse) {
+			this.gse = gse;
+		}
+		
+		/**
+		 * Retrieve the names of all properties present in the wrapped event.
+		 * @return and array holding the property names.
+		 */
+		public String[] getPropertyNames() {
+			if (this.json == null)
+				this.json = this.gse.toJsonObject();
+			TreeSet pnSet = new TreeSet(this.json.keySet());
+			String[] pns = new String[pnSet.size()];
+			int pni = 0;
+			for (Iterator pnit = pnSet.iterator(); pnit.hasNext();)
+				pns[pni++] = pnit.next().toString();
+			return pns;
+		}
+		
+		/**
+		 * Retrieve a property from the wrapped event.
+		 * @param name the name of the property to retrieve
+		 * @return the property with the argument name
+		 */
+		public Object getProperty(String name) {
+			if (this.json == null)
+				this.json = this.gse.toJsonObject();
+			return this.json.get(name);
+		}
+		
+		/**
+		 * Retrieve a string valued property from the wrapped event. If no
+		 * property with the argument name exists, or that property has a
+		 * value that is not a string, this method returns null.
+		 * @param name the name of the property to retrieve
+		 * @return the property with the argument name
+		 */
+		public String getStringProperty(String name) {
+			if (this.json == null)
+				this.json = this.gse.toJsonObject();
+			return JsonParser.getString(this.json, name);
+		}
+		
+		/**
+		 * Retrieve a number valued property from the wrapped event. If no
+		 * property with the argument name exists, or that property has a
+		 * value that is not a number, this method returns null.
+		 * @param name the name of the property to retrieve
+		 * @return the property with the argument name
+		 */
+		public Number getNumberProperty(String name) {
+			if (this.json == null)
+				this.json = this.gse.toJsonObject();
+			return JsonParser.getNumber(this.json, name);
+		}
+		
+		/**
+		 * Retrieve a boolean valued property from the wrapped event. If no
+		 * property with the argument name exists, or that property has a
+		 * value that is not a boolean, this method returns null.
+		 * @param name the name of the property to retrieve
+		 * @return the property with the argument name
+		 */
+		public Boolean getBooleanProperty(String name) {
+			if (this.json == null)
+				this.json = this.gse.toJsonObject();
+			return JsonParser.getBoolean(this.json, name);
+		}
+	}
+	
+	/**
+	 * Check whether or not to ignore a specific event in this asynchronous
+	 * processor. Event listeners create by subclasses that might want to
+	 * ignore certain events should consult this method before enqueuing an
+	 * event for processing.
+	 * @param gse the event to check
+	 * @return true if the event should be ignored
+	 */
+	public boolean filterEvent(GoldenGateServerEvent gse) {
+		return this.filterEvent(new AepDataEvent(gse));
+	}
+	
+	/**
+	 * Check whether or not to ignore a specific event in this asynchronous
+	 * processor. This method by default simply returns <code>false</code>.
+	 * Subclasses may overwrite this method to provide actual filtering
+	 * functionality.
+	 * @param ade the event to check, wrapped for JSON style filed access
+	 * @return true if the event should be ignored
+	 */
+	protected boolean filterEvent(AepDataEvent ade) {
+		return false;
 	}
 	
 	private static final String QUEUE_SIZE_COMMAND = "queueSize";
@@ -353,6 +681,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	private static final String ACTIVATE_COMMAND = "activate";
 	private static final String CLEAR_QUEUE_COMMAND = "clearQueue";
 	private static final String ENQUEUE_UPDATE_COMMAND = "enqueueUpdate";
+	private static final String ENQUEUE_UPDATES_FROM_TSV_COMMAND = "enqueueUpdatesFromTsv";
 	private static final String ENQUEUE_DELETION_COMMAND = "enqueueDelete";
 	private static final String DUMP_STACK_COMMAND = "dumpStack";
 	private static final String PERSIST_QUEUE_COMMAND = "persistQueue";
@@ -403,8 +732,11 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length != 0)
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify no arguments.");
-				else if (eventHandler != null)
-					eventHandler.setFlushing(true, this);
+				else if (eventHandler == null)
+					this.reportError(" Cannot flush queue before starting event handler.");
+				else if (eventQueue.size() == 0)
+					this.reportError(" Cannot flush empty event queue.");
+				else eventHandler.setFlushing(true, this);
 			}
 		};
 		cal.add(ca);
@@ -544,33 +876,123 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			}
 			public String[] getExplanation() {
 				String[] explanation = {
-						ENQUEUE_UPDATE_COMMAND + " <dataId> <user> <priority>",
+						ENQUEUE_UPDATE_COMMAND + " <dataId> <user> <priority> <params>",
 						"Enqueue an update event for a data object with a given ID:",
 						"- <dataId>: the ID of the data object to enqueue an update for",
 						"- <user>: the user responsible for the event (optional)",
-						"- <priority>: set to '-n' or '-h' to enqueue a normal or high-priority event, respectively (optional)"
+						"- <priority>: set to '-n' or '-h' to enqueue a normal or high-priority event, respectively (optional)",
+						"- <params>: subclass specific parameter vector encoded as 64 bit HEX code (optional, to start with '0x')"
 					};
 				return explanation;
 			}
 			public void performActionConsole(String[] arguments) {
 				if (arguments.length == 0)
 					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at least the data ID argument.");
-				else if (arguments.length < 4) {
+				else if (arguments.length < 5) {
 					String user = null;
 					char priority = PRIORITY_LOW;
-					if (arguments.length >= 2) {
-						if ("-h".equals(arguments[1]) || "-n".equals(arguments[1]))
-							priority = readPriorityArgument(arguments[1]);
-						else {
-							user = arguments[1];
-							if (arguments.length == 3)
-								priority = readPriorityArgument(arguments[2]);
-						}
+					String paramStr = null;
+					for (int a = 1; a < arguments.length; a++) {
+						if ("-h".equals(arguments[a]) || "-n".equals(arguments[a]))
+							priority = readPriorityArgument(arguments[a]);
+						else if (arguments[a].matches("0x[0-9A-Fa-f]+"))
+							paramStr = arguments[a];
+						else user = arguments[a];
 					}
-					dataUpdated(arguments[0], false, user, priority);
+					long params = ((paramStr == null) ? 0 : Long.parseLong(paramStr.substring("0x".length()), 16));
+					dataUpdated(arguments[0], false, user, priority, params);
 					this.reportResult("Update event enqueued for data object " + arguments[0] + ".");
 				}
 				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify data ID, user, and priority only.");
+			}
+		};
+		cal.add(ca);
+		
+		//	offer 'enqueueUpdateFromTsv <dataId> <priority>?'
+		ca = new ComponentActionConsole() {
+			public String getActionCommand() {
+				return ENQUEUE_UPDATES_FROM_TSV_COMMAND;
+			}
+			public String[] getExplanation() {
+				String[] explanation = {
+						ENQUEUE_UPDATES_FROM_TSV_COMMAND + " <user> <priority> <params> <colIndex> <tsvPathOrUrl>",
+						"Enqueue update events for all data object whose ID is listed in some column of a TSV:",
+						"- <user>: the user responsible for the event (optional)",
+						"- <priority>: set to '-n' or '-h' to enqueue a normal or high-priority event, respectively (optional)",
+						"- <params>: subclass specific parameter vector encoded as 64 bit HEX code (optional, to start with '0x')",
+						"- <colIndex>: the index of the column holding the data IDs in the TSV (zero-based)",
+						"- <tsvPathOrUrl>: the path or URL of the TSV to ingest (starting with 'http', 'https', or 'file', followed by ':')"
+					};
+				return explanation;
+			}
+			public void performActionConsole(String[] arguments) {
+				if (arguments.length < 2)
+					this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify at least the column index and TSV path arguments.");
+				else if (arguments.length < 6) {
+					String user = null;
+					char priority = PRIORITY_LOW;
+					String paramStr = null;
+					int colIndex = -1;
+					String tsvPathOrUrl = null;
+					for (int a = 0; a < arguments.length; a++) {
+						if ("-h".equals(arguments[a]) || "-n".equals(arguments[a]))
+							priority = readPriorityArgument(arguments[a]);
+						else if (arguments[a].matches("0x[0-9A-Fa-f]+"))
+							paramStr = arguments[a];
+						else if (arguments[a].matches("[0-9]+"))
+							colIndex = Integer.parseInt(arguments[a]);
+						else if (arguments[a].matches("(https|http|file)\\:.+"))
+							tsvPathOrUrl = arguments[a];
+						else user = arguments[a];
+					}
+					if (tsvPathOrUrl == null) {
+						this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', the TSV path of file must start with 'http', 'https', or 'file', followed by ':'.");
+						return;
+					}
+					if (colIndex < 0) {
+						this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', the column index must be an integer, starting from 0.");
+						return;
+					}
+					String[] dataIDs;
+					try {
+						dataIDs = this.readDataIDs(colIndex, tsvPathOrUrl);
+					}
+					catch (IOException ioe) {
+						this.reportError(" Could not read TSV input: " + ioe.getMessage());
+						this.reportError(ioe);
+						return;
+					}
+					this.reportResult("Read " + dataIDs.length + " distinct data IDs.");
+					long params = ((paramStr == null) ? 0 : Long.parseLong(paramStr.substring("0x".length()), 16));
+					for (int i = 0; i < dataIDs.length; i++)
+						dataUpdated(dataIDs[i], false, user, priority, params);
+					this.reportResult("Update events enqueued for " + dataIDs.length + " data objects.");
+				}
+				else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify user, priority, parameter vector, column index, and TSV path only.");
+			}
+			private String[] readDataIDs(int colIndex, String pathOrUrl) throws IOException {
+				BufferedInputStream tsvIn;
+				if (pathOrUrl.startsWith("file:"))
+					tsvIn = new BufferedInputStream(new FileInputStream(new File(pathOrUrl.substring("file:".length()))));
+				else if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+					URL tsvUrl = new URL(pathOrUrl);
+					tsvIn = new BufferedInputStream(tsvUrl.openStream());
+				}
+				else throw new IOException("Invalid path or URL: " + pathOrUrl);
+				BufferedReader tsvBr = new BufferedReader(new InputStreamReader(tsvIn, "UTF-8"));
+				LinkedHashSet dataIDs = new LinkedHashSet();
+				for (String row; (row = tsvBr.readLine()) != null;) {
+					String[] record = row.split("\\t");
+					if (record.length <= colIndex)
+						continue;
+					if (record[colIndex].matches("[0-9A-Fa-f]{32}"))
+						dataIDs.add(record[colIndex].toUpperCase());
+					else if (record[colIndex].matches("[0-9A-Fa-f\\-]{36}"))
+						dataIDs.add(record[colIndex].replaceAll("\\-", "").toUpperCase());
+					else this.reportError(" Ignored invalid data ID '" + record[colIndex] + "'");
+				}
+				tsvBr.close();
+				return ((String[]) dataIDs.toArray(new String[dataIDs.size()]));
 			}
 		};
 		cal.add(ca);
@@ -675,6 +1097,31 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 		else if ("-n".equals(arg))
 			return PRIORITY_NORMAL;
 		else return PRIORITY_LOW;
+	}
+	
+	/**
+	 * Indicates whether or not the event handler is active.
+	 * @return true if the event handler is active, false if it is passive
+	 */
+	public boolean isActive() {
+		return ((this.eventHandler == null) && this.eventHandler.isAlive() && this.eventHandler.isActive());
+	}
+	
+	/**
+	 * Indicates whether or not the event handler is flushing the queue of
+	 * pending events.
+	 * @return true if the event handler is flushing the queue
+	 */
+	public boolean isFlushing() {
+		return ((this.eventHandler == null) && this.eventHandler.isAlive() && this.eventHandler.isFlushing());
+	}
+	
+	/**
+	 * Indicated the number of pending events.
+	 * @return the number of pending events
+	 */
+	public int queueSize() {
+		return this.eventQueue.size();
 	}
 	
 	/**
@@ -1162,19 +1609,23 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 	private DataEventQueue eventQueue = new DataEventQueue();
 	private DataEventHandler eventHandler;
 	private AsynchronousWorkQueue eventQueueMonitor;
+	private SuspendableWorkQueue eventQueueManager;
 	
 	private class DataEventHandler extends Thread {
 		private boolean running = true;
-		private boolean active = true;
-		private boolean flushing = false;
+		boolean active = true;
+		boolean suspended = false;
+		boolean flushing = false;
 		char eventPriority = ((char) 0);
 		long eventStart = -1;
 		long eventEnd = -1;
 		private final Object sleepLock = new Object();
 		long sleepStart = -1;
 		long sleepEnd = -1;
-		DataEventHandler(String name) {
+		DataEventHandler(String name, boolean startPassive) {
 			super(name);
+			if (startPassive)
+				this.active = false;
 		}
 		public void run() {
 			
@@ -1201,7 +1652,7 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 						eventQueue.wait();
 					} catch (InterruptedException ie) {}
 					if (eventQueue.size() != 0) {
-						if (this.active) /* only persist events in passive mode */ {
+						if (this.active && !this.suspended) /* only persist events in passive mode */ {
 							de = eventQueue.dequeue();
 							de.status = DataEvent.STATUS_PROCESING;
 						}
@@ -1214,14 +1665,15 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 				
 				//	go out of flushing mode once queue is empty
 				if (this.flushing && (eventQueue.size() == 0))
-					setFlushingEventHandler(this, false); 
+//					setFlushingEventHandler(this, false); 
+					setFlushingEventHandler(GoldenGateAEP.this, this, false); 
 				
 				//	keep track of resource use
 				long eventProcessingTime;
 				
 				//	nothing to do (wait 10 additional seconds in passive mode)
 				if (de == null) {
-					eventProcessingTime = (this.active ? 0 : (1000 * 10));
+					eventProcessingTime = ((this.active && !this.suspended) ? 0 : (1000 * 10));
 					this.eventEnd = System.currentTimeMillis();
 				}
 				
@@ -1324,6 +1776,13 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			}
 		}
 		
+		void prepareShutdown() {
+			if (this.flushing)
+//				setFlushingEventHandler(this, false);
+				setFlushingEventHandler(GoldenGateAEP.this, this, false);
+			this.active = false;
+		}
+		
 		void shutdown() {
 			synchronized (eventQueue) {
 				ArrayList pes = eventQueue.getPersistEvents();
@@ -1335,6 +1794,9 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			}
 		}
 		
+		boolean isActive() {
+			return this.active;
+		}
 		void setActive(boolean active, ComponentActionConsole cac) {
 			if (active == this.active) {
 				if (active)
@@ -1349,23 +1811,50 @@ public abstract class GoldenGateAEP extends AbstractGoldenGateServerComponent {
 			}
 		}
 		
+		boolean isSuspended() {
+			return this.suspended;
+		}
+		boolean setSuspended(boolean suspended) {
+			if (suspended == this.suspended)
+				return false;
+			else {
+				this.suspended = suspended;
+				return true;
+			}
+		}
+		
+		boolean isFlushing() {
+			return this.flushing;
+		}
 		void setFlushing(boolean flushing, ComponentActionConsole cac) {
 			if (flushing == this.flushing) {
 				if (flushing)
 					cac.reportError("Already in flushing mode.");
 				else cac.reportError("Not in flushing mode.");
 			}
-			else if (setFlushingEventHandler(this, flushing)) {
-				if (flushing) {
-					cac.reportResult("Flushing mode activated.");
-					this.active = true;
-					this.wakeUp(false);
+//			else if (setFlushingEventHandler(this, flushing)) {
+//				if (flushing) {
+//					cac.reportResult("Flushing mode activated.");
+//					this.active = true;
+//					this.wakeUp(false);
+//				}
+//				else cac.reportResult("Flushing mode deactivated.");
+//			}
+//			else if (flushing)
+//				cac.reportError("Could not activate flushing mode, only one flushing instance allowed at a time.");
+//			else cac.reportError("Could not interrupt flushing instance.");
+			else {
+				String error = setFlushingEventHandler(GoldenGateAEP.this, this, flushing);
+				if (error == null) {
+					if (flushing) {
+						cac.reportResult("Flushing mode activated.");
+						this.active = true;
+						this.wakeUp(false);
+					}
+					else cac.reportResult("Flushing mode deactivated.");
 				}
-				else cac.reportResult("Flushing mode deactivated.");
+				else cac.reportError(error);
 			}
-			else if (flushing)
-				cac.reportError("Could not activate flushing mode, only one flushing instance allowed at a time.");
-			else cac.reportError("Could not interrupt flushing instance.");
 		}
 		
 		void wakeUp(boolean unlessFlushing) {

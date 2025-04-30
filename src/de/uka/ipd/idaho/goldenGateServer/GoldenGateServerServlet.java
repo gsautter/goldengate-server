@@ -275,7 +275,7 @@ public class GoldenGateServerServlet extends HttpServlet implements GoldenGateSe
 		this.serverComponents = ((GoldenGateServerComponent[]) serverComponentList.toArray(new GoldenGateServerComponent[serverComponentList.size()]));
 		
 		//	obtain component's network actions
-		for (int c = 0; c < serverComponents.length; c++) {
+		for (int c = 0; c < this.serverComponents.length; c++) {
 			ComponentAction[] componentActions = serverComponents[c].getActions();
 			for (int a = 0; a < componentActions.length; a++)
 				if (componentActions[a] instanceof ComponentActionNetwork) {

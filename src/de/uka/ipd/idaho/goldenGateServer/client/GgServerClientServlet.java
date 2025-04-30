@@ -27,6 +27,8 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.client;
 
+import java.io.IOException;
+
 import javax.servlet.ServletException;
 
 import de.uka.ipd.idaho.easyIO.web.HtmlServlet;
@@ -51,7 +53,7 @@ import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerConstants;
  * an instance specific configuration file, loaded from its data path. By
  * default, this file is named <b>config.cnfg</b>, but an alternative name can
  * be specified in an the <b>configFile</b> parameter in the web.xml. Settings
- * in the servlet specific configuration file supersense global ones specified
+ * in the servlet specific configuration file supersede global ones specified
  * in <code>web.cnfg</code>, so it is easy to work with default values in the
  * latter location and overwrite them in the more specific files as needed.
  * 
@@ -82,5 +84,20 @@ public abstract class GgServerClientServlet extends HtmlServlet implements Golde
 		if (serverPort == null)
 			this.serverConnection = ServerConnection.getServerConnection(serverAddress);
 		else this.serverConnection = ServerConnection.getServerConnection(serverAddress, Integer.parseInt(serverPort));
+	}
+	
+	/**
+	 * Prepare the servlet for shutdown. This implementation closes the
+	 * connection to the back-end server. Subclasses overwriting this method
+	 * thus have to make the super call.
+	 * @see de.uka.ipd.idaho.easyIO.web.WebServlet#exit()
+	 */
+	protected void exit() {
+		try {
+			this.serverConnection.close();
+		}
+		catch (IOException ioe) {
+			ioe.printStackTrace(System.out);
+		}
 	}
 }

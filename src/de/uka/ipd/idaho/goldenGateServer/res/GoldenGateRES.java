@@ -678,26 +678,31 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	}
 	
 	/* (non-Javadoc)
+	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#prepareExit()
+	 */
+	public void prepareExit() {
+		this.eventPersisterService.flushQueue();
+	}
+	
+	/* (non-Javadoc)
 	 * @see de.goldenGateScf.AbstractServerComponent#exitComponent()
 	 */
 	protected void exitComponent() {
-		System.out.println("GoldenGateRES: shutting down ...");
+		this.logInfo("GoldenGateRES: shutting down ...");
 		
 		this.eventPersisterMonitor.dispose();
 		this.eventPersisterService.shutdown();
-		System.out.println("  - event persister service shut down");
+		this.logInfo("  - event persister service shut down");
 		
 		this.eventFetcherService.shutdown();
-		System.out.println("  - event fetcher service shut down");
+		this.logInfo("  - event fetcher service shut down");
 		
 		this.eventIssuerMonitor.dispose();
 		this.eventIssuerService.shutdown();
-		System.out.println("  - event issuer service shut down");
-		
-		System.gc();
+		this.logInfo("  - event issuer service shut down");
 		
 		this.io.close();
-		System.out.println("  - disconnected from database");
+		this.logInfo("  - disconnected from database");
 	}
 	
 	/* (non-Javadoc)
@@ -1188,6 +1193,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 	 */
 	private class EventPersisterThread extends Thread {
 		private boolean keepRunning = true;
+		private boolean sleepAfterEvents = true;
 		EventPersisterThread() {
 			super("ResEventPersister");
 		}
@@ -1211,8 +1217,10 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 					} catch (InterruptedException ie) {}
 					
 					//	woken up despite empty queue ==> shutdown
-					if (persistEventQueue.isEmpty())
+					if (persistEventQueue.isEmpty()) {
+						this.sleepAfterEvents = true;
 						continue;
+					}
 					
 					//	get update
 					else re = ((ResRemoteEvent) persistEventQueue.removeFirst());
@@ -1222,7 +1230,7 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				this.persistEvent(re);
 				
 				//	give a little time to the others
-				if (this.keepRunning) try {
+				if (this.keepRunning && this.sleepAfterEvents) try {
 					Thread.sleep(20);
 				} catch (InterruptedException ie) {}
 			}
@@ -1239,6 +1247,10 @@ IN THE LONG HAUL, implement AbstractResBasedReplicator extends AbstractGoldenGat
 				logError("Error on data update - " + t.getClass().getName() + " (" + t.getMessage() + ")");
 				logError(t);
 			}
+		}
+		void flushQueue() {
+			this.sleepAfterEvents = false;
+			this.interrupt(); // wake up from sleeping
 		}
 		void shutdown() {
 			synchronized (persistEventQueue) {

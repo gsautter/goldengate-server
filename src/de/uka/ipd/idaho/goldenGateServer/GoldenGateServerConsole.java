@@ -71,7 +71,7 @@ public class GoldenGateServerConsole {
 			cTimeout = 2;
 		
 		//	start reading console input
-		final BufferedReader commandReader = new BufferedReader(new InputStreamReader(System.in));
+		BufferedReader commandReader = new BufferedReader(new InputStreamReader(System.in));
 		
 		//	get password if not submitted via console command
 		if (cAuth == null) {
@@ -150,7 +150,6 @@ public class GoldenGateServerConsole {
 		}
 		
 		//	authentication successful, initialize
-//		if ("WELCOME".equals(response)) {
 		if ("WELCOME".equals(response) || response.startsWith("WELCOME ")) {
 			
 			//	crop and split valid letter codes
@@ -273,8 +272,10 @@ public class GoldenGateServerConsole {
 						}
 						minDistLetterCodes.add(lc);
 					}
-					if (minDistLetterCodes.size() == 1) // we have an unambiguous best match
+					if (minDistLetterCodes.size() == 1) /* we have an unambiguous best match */ {
 						letterCode = ((String) minDistLetterCodes.get(0));
+						commandString = ("cc " + letterCode + letterCodeSuffix);
+					}
 					else {
 						if (minDistLetterCodes.isEmpty())
 							printLocalError("Invalid letter code '" + letterCode + "'");

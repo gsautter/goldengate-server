@@ -87,19 +87,4 @@ public abstract class AsynchronousWorkQueue {
 	 * @return the status of the work queue
 	 */
 	public abstract String getStatus();
-	
-	/* TODO Somehow cap off waiting time after jobs in AEP and ADAH:
-- no use sleeping half an hour after one large job !!!
-- maybe make sleeping time configurable:
-  - per-instance constant
-  - fraction factor of job runtime
-  - absolute minimum
-  - absolute maximum
-- configure in AEP console ...
-- ... or even more centrally in to-create work queue manager component (WQM)
-- allow hot modification via server console
-- maybe make defaults dependent on
-  - number of work queues (more ==> sleep more)
-  - number of CPU cores (more ==> sleep less)
-	 */
 }

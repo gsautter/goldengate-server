@@ -66,7 +66,7 @@ public class GoldenGateUDS extends AbstractGoldenGateServerComponent implements 
 	
 	private IoProvider io;
 	
-	private static final String DATA_TABLE_NAME = "UdsData";
+	private static final String DATA_TABLE_NAME = "GgUdsData";
 	private static final String FIELD_NAME_COLUMN_NAME = "FieldName";
 	private static final int FIELD_NAME_COLUMN_LENGTH = 64;
 	private static final String USER_NAME_COLUMN_NAME = "UserName";

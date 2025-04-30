@@ -35,9 +35,8 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Hashtable;
-import java.util.Iterator;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.TreeMap;
 
 import de.uka.ipd.idaho.easyIO.EasyIO;
@@ -46,6 +45,7 @@ import de.uka.ipd.idaho.easyIO.SqlQueryResult;
 import de.uka.ipd.idaho.easyIO.sql.TableDefinition;
 import de.uka.ipd.idaho.easyIO.util.RandomByteSource;
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
+import de.uka.ipd.idaho.goldenGateServer.AsynchronousWorkQueue;
 import de.uka.ipd.idaho.goldenGateServer.uaa.data.UserList;
 import de.uka.ipd.idaho.stringUtils.csvHandler.StringRelation;
 import de.uka.ipd.idaho.stringUtils.csvHandler.StringTupel;
@@ -59,20 +59,12 @@ import de.uka.ipd.idaho.stringUtils.csvHandler.StringTupel;
  * @author sautter
  */
 public class UserAccessAuthority extends AbstractGoldenGateServerComponent implements UserAccessAuthorityConstants {
-	
-	private static final String LIST_USERS_COMMAND = "list";
-	private static final String IMPORT_USERS_COMMAND = "import";
-	
-	private static final String CREATE_USER_COMMAND = "create";
-	private static final String SET_USER_PWD_COMMAND = "setPwd";
-	private static final String DELETE_USER_COMMAND = "delete";
-	private static final String SET_ADMIN_COMMAND = "setAdm";
-	private static final String REMOVE_ADMIN_COMMAND = "removeAdm";
-	
-	private static final String SESSION_TIMEOUT_SETTING_NAME = "sessionTimeout";
-	private long sessionTimeout = 0;
-	private Thread sessionTimeoutWatchdog = null;
-	private final Object sessionTimeoutWatchdogLock = new Object();
+	private static final String SESSION_TIMEOUT_MILLIS_SETTING_NAME = "sessionTimeoutMillis";
+	private static final String SESSION_TIMEOUT_SECONDS_SETTING_NAME = "sessionTimeoutSeconds";
+	private static final String SESSION_TIMEOUT_MINUTES_SETTING_NAME = "sessionTimeoutMinutes";
+	private static final int MIN_SESSION_TIMEOUT_MILLIS = (1000 * 60 * 1); // set one minute as absolute minimum for timeout
+	private SessionTimeoutWatchdog sessionTimeoutWatchdog = null;
+	private Map sessionsById = Collections.synchronizedMap(new HashMap());
 	
 	private UserPermissionAuthority upa;
 	private UserDataProvider udp;
@@ -136,60 +128,85 @@ TODO Add notifications about user actions and modifications to GgServer:
 		//	read user data
 		this.readUserData();
 		
-		//	read session timeout (in seconds)
-		try {
-			this.sessionTimeout = Integer.parseInt(this.configuration.getSetting(SESSION_TIMEOUT_SETTING_NAME, ("" + this.sessionTimeout)));
+		//	read session timeout (can come at 3 granularities, for convenience)
+		int sessionTimeout = 0;
+		String stMillis = this.configuration.getSetting(SESSION_TIMEOUT_MILLIS_SETTING_NAME);
+		if (stMillis != null) try {
+			sessionTimeout = Math.max(sessionTimeout, Integer.parseInt(stMillis));
+		} catch (NumberFormatException e) {}
+		String stSeconds = this.configuration.getSetting(SESSION_TIMEOUT_SECONDS_SETTING_NAME);
+		if (stSeconds != null) try {
+			sessionTimeout = Math.max(sessionTimeout, (1000 * Integer.parseInt(stSeconds)));
+		} catch (NumberFormatException e) {}
+		String stMinutes = this.configuration.getSetting(SESSION_TIMEOUT_MINUTES_SETTING_NAME);
+		if (stMinutes != null) try {
+			sessionTimeout = Math.max(sessionTimeout, (1000 * 60 * Integer.parseInt(stMinutes)));
 		} catch (NumberFormatException e) {}
 		
-		//	session timeout enabled (set to value > 0)
-		if (this.sessionTimeout > 0) {
-			
-			//	create and start watchdog
-			this.sessionTimeoutWatchdog = new Thread() {
-				
-				/* wait at least one minute (60,000 milliseconds) between
-				 * checks, at most 5 minutes (300,000 milliseconds), default to
-				 * a tenth of the configured session timeout (session timeout is
-				 * in seconds, multiply to milliseconds)*/
-				private final long maxWait = Math.max(Math.min((sessionTimeout * 100), 300000), 60000);
-				
-				public void run() {
-					
-					//	keep running while not shut down (session timeout will be set to 0 then)
-					while (sessionTimeout > 0) {
-						
-						//	wait until next check
-						synchronized(sessionTimeoutWatchdogLock) {
-							try {
-								sessionTimeoutWatchdogLock.wait(this.maxWait);
-							} catch (InterruptedException ie) {}
-							
-							//	session timeout set to 0 ==> shutdown
-							if (sessionTimeout == 0)
-								return;
-						}
-						
-						//	get session (since both session IDs and user names are mapped to the respective sessions, use HashSet for duplicate elimination)
-						HashSet sessions = new HashSet(sessionsByID.values());
-						
-						//	get minimum time for last activity (session timeout is in seconds, multiply to milliseconds)
-						long minLastActiveTime = (System.currentTimeMillis() - (sessionTimeout * 1000));
-						
-						//	check sessions one by one
-						for (Iterator sessionIterator = sessions.iterator(); sessionIterator.hasNext();) {
-							Session session = ((Session) sessionIterator.next());
-							
-							//	compare last activity of each session with current time
-							if (session.lastActivity < minLastActiveTime) {
-								
-								//	session timed out, remove it
-								sessionsByID.remove(session.sessionId);
-							}
-						}
-					}
+		//	create and start watchdog if session timeout set to value above zero
+		if (sessionTimeout != 0) {
+			sessionTimeout = Math.max(sessionTimeout, MIN_SESSION_TIMEOUT_MILLIS); // prevent all too low timeouts
+			this.sessionTimeoutWatchdog = new SessionTimeoutWatchdog(sessionTimeout);
+			this.sessionTimeoutWatchdog.start();
+		}
+	}
+	
+	private class SessionTimeoutWatchdog extends Thread {
+		private long sessionTimeout;
+		private long checkSessionsAt;
+		private AsynchronousWorkQueue monitor;
+		SessionTimeoutWatchdog(long sessionTimeout) {
+			super("UaaSessionTimeoutWatchdog");
+			this.sessionTimeout = sessionTimeout;
+			this.checkSessionsAt = (System.currentTimeMillis() + this.sessionTimeout);
+			this.monitor = new AsynchronousWorkQueue("UaaSessionTimeoutWatchdog") {
+				public String getStatus() {
+					return (this.name + ": got " + sessionsById.size() + " active sessions, next timeout check due in " + (checkSessionsAt - System.currentTimeMillis()) + "ms");
 				}
 			};
-			this.sessionTimeoutWatchdog.start();
+		}
+		public void run() {
+			long checkSessionsIn = this.sessionTimeout; // no use checking earlier than anything even _could_ time out
+			while (0 < this.sessionTimeout) {
+				
+				//	wait until next check
+				synchronized(this) {
+					if (0 < checkSessionsIn) try {
+						this.wait(checkSessionsIn);
+					} catch (InterruptedException ie) {}
+				}
+				
+				//	get local copy to avoid freak accidents on shutdown
+				long sessionTimeout = this.sessionTimeout;
+				if (sessionTimeout == 0) // session timeout set to 0 ==> shutdown
+					break;
+				
+				//	get local copy of sessions to avoid race conditions
+				ArrayList sessions = new ArrayList(sessionsById.values());
+				
+				//	check sessions one by one
+				long checkTime = System.currentTimeMillis();
+				checkSessionsIn = sessionTimeout; // maximum possible time until next check
+				logInfo(this.getName() + ": checking " + sessions.size() + " sessions:");
+				for (int s = 0; s < sessions.size(); s++) {
+					Session session = ((Session) sessions.get(s));
+					long idleTime = (checkTime - session.lastActivity);
+					if (sessionTimeout < idleTime) {
+						sessionsById.remove(session.sessionId); // session timed out, remove it
+						logInfo(" - terminated idle session of user '" + session.userName + "'");
+					}
+					else checkSessionsIn = Math.min(checkSessionsIn, ((sessionTimeout - idleTime) + 100)); // no use checking this one again before it even _could_ time out, or immediately
+				}
+				logInfo(" ==> next check due in " + checkSessionsIn + "ms");
+				
+				//	update monitoring data
+				this.checkSessionsAt = (checkTime + checkSessionsIn);
+			}
+			this.monitor.dispose(); // clean up after ourselves
+		}
+		synchronized void shutdown() {
+			this.sessionTimeout = 0;
+			this.notify();
 		}
 	}
 	
@@ -199,28 +216,26 @@ TODO Add notifications about user actions and modifications to GgServer:
 	protected void exitComponent() {
 		
 		//	clean sessions
-		this.sessionsByID.clear();
+		this.sessionsById.clear();
 		
 		//	shut down sessions timeout watchdog
 		if (this.sessionTimeoutWatchdog != null) {
-			
-			//	make session timeout watchdog terminate immediately
-			synchronized(this.sessionTimeoutWatchdogLock) {
-				
-				//	give session timeout watchdog shutdown signal
-				this.sessionTimeout = 0;
-				
-				//	and wake it up from waiting lock
-				this.sessionTimeoutWatchdogLock.notify();
-			}
-			
-			//	wait for timeout watchdog to finish
+			this.sessionTimeoutWatchdog.shutdown();
 			try {
 				this.sessionTimeoutWatchdog.join();
 			} catch (InterruptedException ie) {}
 		}
 	}
-
+	
+	private static final String LIST_USERS_COMMAND = "list";
+	private static final String IMPORT_USERS_COMMAND = "import";
+	
+	private static final String CREATE_USER_COMMAND = "create";
+	private static final String SET_USER_PWD_COMMAND = "setPwd";
+	private static final String DELETE_USER_COMMAND = "delete";
+	private static final String SET_ADMIN_COMMAND = "setAdm";
+	private static final String REMOVE_ADMIN_COMMAND = "removeAdm";
+	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#getActions()
 	 */
@@ -534,7 +549,7 @@ TODO Add notifications about user actions and modifications to GgServer:
 					
 					UserList ul = new UserList();
 					for (int u = 0; u < users.length; u++) {
-						StringTupel user = new StringTupel();
+						StringTupel user = new StringTupel(2);
 						user.setValue(USER_NAME_PARAMETER, users[u].userName);
 						if (users[u].isAdmin())
 							user.setValue(IS_ADMIN_PARAMETER, IS_ADMIN_PARAMETER);
@@ -669,11 +684,10 @@ TODO Add notifications about user actions and modifications to GgServer:
 	}
 	
 	// login data for access from within the same JVM (comparison via ==)
-	/** user name for administrator super user account, for performing administrative actions without login from within the same JVM */
+	/* user name for administrator super user account, for performing administrative actions without login from within the same JVM */
 	public static final String SUPERUSER_NAME = RandomByteSource.getGUID(); //"SUPERUSER"; random string is way safer, and since we use '==' anyway, content of string is not relevant
 	
-	/** user name for administrator super user account, for performing administrative actions without login from within the same JVM */
-//	public static final String SUPERUSER_PASSWORD = "SUPERPASSWORD";
+	/* user name for administrator super user account, for performing administrative actions without login from within the same JVM */
 	static final String SUPERUSER_PASSWORD = RandomByteSource.getGUID(); //"SUPERPASSWORD"; random string  is way safer, and since we use '==' anyway, content of string is not relevant
 	
 	private static final String USER_NAME = "name";
@@ -1138,11 +1152,6 @@ TODO Add notifications about user actions and modifications to GgServer:
 		return ((User[]) userList.toArray(new User[userList.size()]));
 	}
 	
-	/**
-	 * container for user data
-	 * 
-	 * @author sautter
-	 */
 	private static class User implements Comparable {
 		final String userName;
 		private int passwordSalt;
@@ -1183,13 +1192,6 @@ TODO Add notifications about user actions and modifications to GgServer:
 		}
 	}
 	
-	private Hashtable sessionsByID = new Hashtable();
-	
-	/**
-	 * container for session data
-	 * 
-	 * @author sautter
-	 */
 	private class Session {
 		final String userName;
 		final String sessionId;
@@ -1218,7 +1220,6 @@ TODO Add notifications about user actions and modifications to GgServer:
 	 */
 	public String login(String userName, String password) {
 		if (this.authenticate(userName, password)) {
-			
 			String sessionId = this.produceSessionID();
 			
 			//	make admin session ID if user is admin
@@ -1229,13 +1230,9 @@ TODO Add notifications about user actions and modifications to GgServer:
 			else while (sessionId.endsWith(ADMIN_SESSION_ID_SUFFIX))
 				sessionId = this.produceSessionID();
 			
-			//	create session
+			//	create, register, and return session
 			Session session = new Session(userName, sessionId);
-			
-			//	register session
-			this.sessionsByID.put(sessionId, session);
-			
-			//	return session ID
+			this.sessionsById.put(sessionId, session);
 			return session.sessionId;
 		}
 		else return null;
@@ -1246,16 +1243,10 @@ TODO Add notifications about user actions and modifications to GgServer:
 	 * @param sessionId the ID of the session to check
 	 */
 	public boolean isValidSession(String sessionId) {
-		
-		//	get session
-		Session session = ((sessionId == null) ? null : ((Session) this.sessionsByID.get(sessionId)));
-		
-		//	invalid session
+		Session session = ((sessionId == null) ? null : ((Session) this.sessionsById.get(sessionId)));
 		if (session == null)
 			return false;
-		
-		//	valid session, remember last activity
-		session.lastActivity = System.currentTimeMillis();
+		session.lastActivity = System.currentTimeMillis(); // remember last activity
 		return true;
 	}
 	
@@ -1282,11 +1273,7 @@ TODO Add notifications about user actions and modifications to GgServer:
 	 *         ID, or null, if there is no such session
 	 */
 	public String getUserNameForSession(String sessionId) {
-		
-		//	get session
-		Session session = ((sessionId == null) ? null : ((Session) this.sessionsByID.get(sessionId)));
-		
-		//	read user name
+		Session session = ((sessionId == null) ? null : ((Session) this.sessionsById.get(sessionId)));
 		return ((session == null) ? null : session.userName);
 	}
 	
@@ -1295,13 +1282,9 @@ TODO Add notifications about user actions and modifications to GgServer:
 	 * @param sessionId the ID of the session to log out
 	 */
 	public void logout(String sessionId) {
-		
-		//	get session
-		Session session = ((sessionId == null) ? null : ((Session) this.sessionsByID.get(sessionId)));
-		
-		//	do logout
+		Session session = ((sessionId == null) ? null : ((Session) this.sessionsById.get(sessionId)));
 		if (session != null)
-			this.sessionsByID.remove(session.sessionId);
+			this.sessionsById.remove(session.sessionId);
 	}
 	
 	private String produceSessionID() {
@@ -1309,6 +1292,6 @@ TODO Add notifications about user actions and modifications to GgServer:
 	}
 	
 	private String truncateId(String id) {
-		return (id.startsWith("0x") ? id.substring(2) : id);
+		return (id.startsWith("0x") ? id.substring("0x".length()) : id);
 	}
 }

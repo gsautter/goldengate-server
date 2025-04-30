@@ -97,6 +97,21 @@ public interface GoldenGateServerComponent extends GoldenGateServerConstants {
 	public abstract void linkInit();
 	
 	/**
+	 * Prepare the server component for shutdown, finish business with other
+	 * components, etc. This method is called before <code>exit()</code>, when
+	 * other components are still functional. Implementations should still keep
+	 * their components ready to react normally to method calls from other
+	 * components, but should finish and cease any proactive action. This means
+	 * implementations should not have any irreversible effects on the workings
+	 * of the component, just transfer it into a passive as possible state,
+	 * ready to shut down. The latter also implies emptying any non-persisted
+	 * work queues as quickly as possible. Furthermore, implementations should
+	 * be idempotent, i.e., a second call should not make any functional
+	 * difference or yield a different result.
+	 */
+	public abstract void prepareExit();
+	
+	/**
 	 * Finalize the server component, store data, clean up memory, etc. This
 	 * method is called before system shutdown.
 	 */

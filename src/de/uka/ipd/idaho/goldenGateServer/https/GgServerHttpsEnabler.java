@@ -213,15 +213,18 @@ Use "<hostName>-0" alias to check for existing certificates ...
 				}
 				public String[] getExplanation() {
 					String[] explanation = {
-							TRUST_COMMAND + " <host>",
+							TRUST_COMMAND + " <host> <port>",
 							"Add the HTTPS certificates from a given host to the trusted list:",
-							"- <host>: the host whose certificates to add.",
+							"- <host>: the host whose certificates to add",
+							"- <port>: the port to connect to the specified host on (if other than 443)",
 						};
 					return explanation;
 				}
 				public void performActionConsole(String[] arguments) {
 					if (arguments.length == 1)
-						importCertificates(arguments[0], this);
+						importCertificates(arguments[0], -1, this);
+					else if (arguments.length == 2)
+						importCertificates(arguments[0], Integer.parseInt(arguments[1]), this);
 					else this.reportError(" Invalid arguments for '" + this.getActionCommand() + "', specify only the domain name.");
 				}
 			},
@@ -295,8 +298,14 @@ Use "<hostName>-0" alias to check for existing certificates ...
 		return cas;
 	}
 	
-	private void importCertificates(String host, ComponentActionConsole cac) {
-		cac.reportResult("Getting certificates from " + host + " ...");
+	private void importCertificates(String host, int port, ComponentActionConsole cac) {
+		
+		//	parse port off host name
+		if ((port < 0) && host.matches(".*\\:[0-9]+")) {
+			port = Integer.parseInt(host.substring(host.lastIndexOf(":") + ":".length()));
+			host = host.substring(0, host.lastIndexOf(":"));
+		}
+		cac.reportResult("Getting certificates from " + host + ((port < 0) ? "" : (":" + port)) + " ...");
 		
 		//	mark ourselves as trusted (there is never more than one console thread)
 		this.trustingThreadId = Thread.currentThread().getId();
@@ -304,7 +313,7 @@ Use "<hostName>-0" alias to check for existing certificates ...
 		
 		//	open socket to get certificates
 		try {
-			SSLSocket socket = (SSLSocket) HttpsURLConnection.getDefaultSSLSocketFactory().createSocket(host, 443);
+			SSLSocket socket = (SSLSocket) HttpsURLConnection.getDefaultSSLSocketFactory().createSocket(host, ((port < 0) ? 443 : port));
 			socket.setSoTimeout(10000);
 			cac.reportResult(" - starting SSL handshake ...");
 			socket.startHandshake();

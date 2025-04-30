@@ -28,7 +28,6 @@
 package de.uka.ipd.idaho.goldenGateServer.util.masterSlave;
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
@@ -87,7 +86,7 @@ public class MasterProcessInterface {
 	}
 	
 	Thread[] getThreads() {
-		Thread[] threads = new Thread[512];
+		Thread[] threads = new Thread[32];
 		int threadCount = this.rootThreadGroup.enumerate(threads, true);
 		while (threadCount == threads.length) {
 			threads = new Thread[threads.length * 2];
@@ -97,8 +96,10 @@ public class MasterProcessInterface {
 	}
 	
 	Thread findThreads(String threadName) {
-		Thread[] threads = getThreads();
+		Thread[] threads = this.getThreads();
 		for (int t = 0; t < threads.length; t++) {
+			if (threads[t] == null)
+				continue;
 			if (threadName.equals(threads[t].getName()))
 				return threads[t];
 		}
@@ -120,23 +121,27 @@ public class MasterProcessInterface {
 		Thread sysInThread = new Thread("MasterProcessInterface") {
 			public void run() {
 				try {
-					for (String inLine; (inLine = sysInBr.readLine()) != null;) {
+					for (String inLine; (inLine = sysInBr.readLine()) != null;) try {
 						if (LIST_THREADS_COMMAND.equals(inLine)) {
 							Thread[] threads = getThreads();
 							sendResult("These are the currently active threads:");
-							for (int t = 0; t < threads.length; t++)
-								sendResult(" - " + threads[t].getName() + " (" + threads[t].getState() + ", " + threads[t].getClass().getName() + ")");
+							for (int t = 0; t < threads.length; t++) {
+								if (threads[t] != null)
+									sendResult(" - " + threads[t].getName() + " (" + threads[t].getState() + ", " + threads[t].getClass().getName() + ")");
+							}
 						}
 						else if (LIST_THREAD_GROUPS_COMMAND.equals(inLine)) {
-							ThreadGroup[] tgs = new ThreadGroup[128];
+							ThreadGroup[] tgs = new ThreadGroup[32];
 							int tgc = rootThreadGroup.enumerate(tgs, true);
 							while (tgc == tgs.length) {
 								tgs = new ThreadGroup[tgs.length * 2];
 								tgc = rootThreadGroup.enumerate(tgs, true);
 							}
 							sendResult("These are the currently active thread groups:");
-							for (int g = 0; g < tgs.length; g++)
-								sendResult(" - " + tgs[g].getName() + " (" + tgs[g].activeCount() + " threads)");
+							for (int g = 0; g < tgs.length; g++) {
+								if (tgs[g] != null)
+									sendResult(" - " + tgs[g].getName() + " (" + tgs[g].activeCount() + " threads)");
+							}
 						}
 						else if (THREAD_STACK_COMMAND.equals(inLine)) {
 							this.sendThreadStack(mainThread);
@@ -180,9 +185,14 @@ public class MasterProcessInterface {
 						}
 						else handleInput(inLine);
 					}
+					catch (Exception e) {
+						sendError("Exception handling command '" + inLine + "': " + e.getMessage());
+						sendError(e);
+					}
 				}
-				catch (IOException e) {
-					e.printStackTrace();
+				catch (Exception e) {
+					sendError("Exception receiving command: " + e.getMessage());
+					sendError(e);
 				}
 			}
 			private void sendThreadStack(Thread thread) {

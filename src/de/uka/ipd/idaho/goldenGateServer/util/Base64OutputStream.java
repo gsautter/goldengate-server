@@ -31,12 +31,15 @@ package de.uka.ipd.idaho.goldenGateServer.util;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
+import java.util.Arrays;
 
 /**
  * Output stream for sending binary data through a character level connection
  * using Base64 encoding.
  * 
  * @author sautter
+ * 
+ * @deprecated use de.uka.ipd.idaho.easyIO.streams.Base64.EncoderOutputStream
  */
 public class Base64OutputStream extends OutputStream {
 	private Writer out;
@@ -55,11 +58,11 @@ public class Base64OutputStream extends OutputStream {
 	 * @see java.io.OutputStream#write(int)
 	 */
 	public synchronized void write(int b) throws IOException {
-		if (this.out == null) throw new IOException("Closed.");
-		
+		if (this.out == null)
+			throw new IOException("Closed.");
 		this.buffer[this.bufferLevel++] = b;
 		if (this.bufferLevel == 3)
-			this.writeBuffer("");
+			this.flushBuffer();
 	}
 	
  	/**
@@ -74,8 +77,8 @@ public class Base64OutputStream extends OutputStream {
 	 * @see java.io.OutputStream#close()
 	 */
 	public synchronized void close() throws IOException {
-		if (this.out == null) throw new IOException("Closed.");
-		
+		if (this.out == null)
+			throw new IOException("Closed.");
 		this.close(false);
 	}
 	
@@ -90,19 +93,12 @@ public class Base64OutputStream extends OutputStream {
 	 * @see java.io.OutputStream#close()
 	 */
 	public synchronized void close(boolean closeWriter) throws IOException {
-		if (this.out == null) throw new IOException("Closed.");
+		if (this.out == null)
+			throw new IOException("Closed.");
 		
-		if (this.bufferLevel != 0) {
-			String padding = "";
-			while (this.bufferLevel < 3) {
-				this.buffer[this.bufferLevel++] = 0;
-				padding += Base64.paddingChar;
-			}
-			this.writeBuffer(padding);
-		}
-//		this.out.flush();
-//		if (closeWriter)
-//			this.out.close();
+		if (this.bufferLevel != 0)
+			this.flushBuffer();
+		
 		if (closeWriter) {
 			this.out.flush();
 			this.out.close();
@@ -110,25 +106,32 @@ public class Base64OutputStream extends OutputStream {
 		this.out = null;
 	}
 	
-	private synchronized void writeBuffer(String padding) throws IOException {
-		if (this.out == null) throw new IOException("Closed.");
+	private synchronized void flushBuffer() throws IOException {
+		if (this.out == null)
+			throw new IOException("Closed.");
 		
-		// these three 8-bit (ASCII) characters become one 24-bit number
-		int byteBlock = ((this.buffer[0] & 255) << 16) + ((this.buffer[1] & 255) << 8) + (this.buffer[2] & 255);
+		//	pad up buffer with 0
+		if (this.bufferLevel < this.buffer.length)
+			Arrays.fill(this.buffer, this.bufferLevel, this.buffer.length, 0);
 		
-		// this 24-bit number gets separated into four 6-bit numbers
-		int[] byteBlockCodes = {(byteBlock >>> 18) & 63, (byteBlock >>> 12) & 63, (byteBlock >>> 6) & 63, (byteBlock & 63)};
+		//	these three 8-bit (ASCII) characters become one 24-bit number
+		int byteBlock = (
+				((this.buffer[0] & 0xFF) << 16)
+				|
+				((this.buffer[1] & 0xFF) << 8)
+				|
+				((this.buffer[2] & 0xFF) << 0)
+			);
 		
-		// those four 6-bit numbers are used as indices into the base64 character list
-		String result = (
-				"" + Base64.base64chars.charAt(byteBlockCodes[0]) +
-				"" + Base64.base64chars.charAt(byteBlockCodes[1]) +
-				"" + Base64.base64chars.charAt(byteBlockCodes[2]) +
-				"" + Base64.base64chars.charAt(byteBlockCodes[3])
-				);
+		//	those four 6-bit numbers are used as indices into the base64 character list
+		char[] byteBlockChars = {
+				Base64.base64chars.charAt((byteBlock >>> 18) & 0x3F),
+				Base64.base64chars.charAt((byteBlock >>> 12) & 0x3F),
+				(this.bufferLevel < 2) ? Base64.paddingChar : Base64.base64chars.charAt((byteBlock >>> 6) & 0x3F),
+				(this.bufferLevel < 3) ? Base64.paddingChar : Base64.base64chars.charAt((byteBlock >>> 0) & 0x3F),
+			};
 		
 		this.bufferLevel = 0;
-//		System.out.print(result.substring(0, (4 - padding.length())) + padding);
-		this.out.write(result.substring(0, (4 - padding.length())) + padding);
+		this.out.write(byteBlockChars);
 	}
 }

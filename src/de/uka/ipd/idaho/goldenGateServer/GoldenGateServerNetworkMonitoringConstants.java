@@ -57,4 +57,7 @@ public interface GoldenGateServerNetworkMonitoringConstants {
 	
 	/** the network action command for retrieving a list of the active background queues and their status from the server */
 	public static final String NETWORK_MONITOR_LIST_QUEUES = "GGS_NMI_LIST_QUEUES";
+	
+	/** the network action command for triggering garbage collection in the server */
+	public static final String NETWORK_MONITOR_GC = "GGS_NMI_GC";
 }

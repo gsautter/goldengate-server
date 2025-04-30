@@ -71,19 +71,19 @@ import de.uka.ipd.idaho.stringUtils.StringVector;
 /**
  * The authentication manager offers central management of accounts and
  * authentication. It can be passed its server connection data either via the
- * setHost(), setPort(), and setUseHttp() methods, or via loading account data
- * from its data provider. Other components can obtain the centralized instance
- * through the getAuthenticationManager() method. This method returns null if no
- * instance has been created so far. In this case, use the
- * getAuthenticationManager(GoldenGatePluginDataProvider) method. This will
- * create an AuthenticationManager using this very data provider. Dependent
- * components can obtain an AuthenticatedClient through the
- * getAuthenticatedClient method. Once created and logged in, this client is
- * shared among all the requesters, in the fashion of a singleton. This prevents
- * users from having to log in for each one of several client objects using an
- * AuthenticatedClient for creating another client that provides the actual
- * functionality. Instead, authentication is shared among all the functionality
- * clients.
+ * <code>setHost()</code>, <code>setPort()</code>, and <code>setUseHttp()</code>
+ * methods, or via loading account data from its data provider. Other components
+ * can obtain the centralized instance through <code>the getAuthenticationManager()</code>
+ * method. This method returns null if no instance has been created so far. In
+ * this case, use the <code>getAuthenticationManager(GoldenGatePluginDataProvider)</code>
+ * method. This will create an <code>AuthenticationManager</code> using this
+ * very data provider. Dependent components can obtain an <code>AuthenticatedClient</code>
+ * via the <code>getAuthenticatedClient()</code> method. Once created and
+ * logged in, this client is shared among all the requesters, in the fashion of
+ * a singleton. This prevents users from having to log in for each one of several
+ * client objects using an <code>AuthenticatedClient</code> for creating another
+ * client that provides the actual functionality. Instead, authentication is
+ * shared among all the functionality clients.
  * 
  * @author sautter
  */
@@ -316,13 +316,14 @@ public class AuthenticationManager {
 				saveAccount(account);
 				return true;
 			}
-			
 			else return false;
 		}
 		
 		private boolean deleteAccount(Account account) {
-			if (account == null) return false;
-			if (account.equals(activeAccount)) logout();
+			if (account == null)
+				return false;
+			if (account.equals(activeAccount))
+				logout();
 			accountNames.removeAll(account.getName());
 			accountsByName.remove(account.getName());
 			return dataProvider.deleteData("Acc" + account.getName().hashCode() + ACCOUNT_FILE_EXTENSION);
@@ -777,10 +778,10 @@ public class AuthenticationManager {
 	}
 	
 	/**
-	 * Retrieve an AuthenticatedClient for communicating with the backing
-	 * server. If this method returns an AuthenticatedClient, it is logged in
-	 * and ready to use. If a connection to the backing server could not be
-	 * established, this method returns null.
+	 * Retrieve an <code>AuthenticatedClient</code> for communicating with the
+	 * backing server. If this method returns an <code>AuthenticatedClient</code>,
+	 * it is logged in and ready to use. If a connection to the backing server
+	 * could not be established, this method returns null.
 	 * @param passive waive login attempt if not done before?
 	 * @return an AuthenticatedClient for communicating with the backing server
 	 */
@@ -1032,16 +1033,17 @@ public class AuthenticationManager {
 	 * AuthenticatedClient in order to access the server again. Use with care.
 	 */
 	public static void logout() {
-		if (activeAccount != null) try {
-			
-			if (authClient != null)
-				authClient.logout();
-			authClient = null;
-			
-			activeAccount = null;
+		if (activeAccount == null)
+			return;
+		AuthenticatedClient authClt = authClient;
+		authClient = null;
+		Account actvAccnt = activeAccount;
+		activeAccount = null;
+		if (authClt != null) try {
+			authClt.logout();
 		}
 		catch (IOException ioe) {
-			JOptionPane.showMessageDialog(DialogPanel.getTopWindow(), ("An error occurred while logging out from the GoldenGATE Server at\n" + activeAccount.host + ":" + activeAccount.port + "\n" + ioe.getMessage()), "Error on Logout", JOptionPane.ERROR_MESSAGE);
+			JOptionPane.showMessageDialog(DialogPanel.getTopWindow(), ("An error occurred while logging out from the GoldenGATE Server at\r\n" + actvAccnt.host + ":" + actvAccnt.port + "\r\n" + ioe.getMessage()), "Error on Logout", JOptionPane.ERROR_MESSAGE);
 		}
 	}
 	

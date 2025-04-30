@@ -116,8 +116,8 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 	/**
 	 * Install a JAR required for a sub application in the execution folder of
 	 * the latter. This method also replaces existing JARs in the target folder
-	 * if a more recent version is found in from the source folder. If throwing
-	 * an exception on failure is set to false, the return value indicates
+	 * if a more recent version is found in the source folder. If throwing an
+	 * exception on failure is set to false, the return value indicates
 	 * installation success; if it is set to true, this method will either
 	 * return true or throw an exception.
 	 * @param name the name of the JAR to install
@@ -149,11 +149,12 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 	/**
 	 * Install a resource file required for a sub application in the execution
 	 * folder of the latter. This method also replaces existing JARs in the
-	 * target folder if a more recent version is found in from the source
-	 * folder. If throwing an exception on failure is set to false, the return
-	 * value indicates installation success; if it is set to true, this method
-	 * will either return true or throw an exception.
-	 * @param name the name of the resource file to install
+	 * target folder if a more recent version is found in the source folder.
+	 * If throwing an exception on failure is set to false, the return value
+	 * indicates installation success; if it is set to true, this method will
+	 * either return true or throw an exception.
+	 * @param name the name of the resource file to install (may be prefixed
+	 *            with a relative path)
 	 * @param sourceFolder the folder to find the resource file in
 	 * @param targetFolder the folder to install the resource file in
 	 * @param throwExceptionOnFail throw an exception if installation fails?
@@ -175,6 +176,17 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 		}
 		System.out.println(" - found source file at " + sourceFile.getAbsolutePath());
 		
+		//	normalize file name
+		name = name.replace('\\', '/');
+		
+		//	follow any relative paths
+		if (name.indexOf('/') != -1) {
+			String path = name.substring(0, name.lastIndexOf('/'));
+			targetFolder = new File(targetFolder, path);
+			targetFolder.mkdirs();
+			System.out.println(" - target folder " + targetFolder.getAbsolutePath() + " created successfully");
+		}
+		
 		//	install JAR
 		return installFile(sourceFile, "file", targetFolder, throwExceptionOnFail);
 	}
@@ -183,12 +195,12 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 		
 		//	check target JAR
 		File targetFile = new File(targetFolder, sourceFile.getName());
-		if ((targetFile.lastModified() + 1000) > sourceFile.lastModified()) {
+		if ((targetFile.lastModified() + 1000) /* need to accommodate for whole-second precision file systems */ > sourceFile.lastModified()) {
 			System.out.println(" ==> up to date");
 			return true;
 		}
 		
-		//	copy (more recent) source JAR to target folder
+		//	copy (more recent) source file to target folder
 		try {
 			InputStream sourceIn = new BufferedInputStream(new FileInputStream(sourceFile));
 			OutputStream targetOut = new BufferedOutputStream(new FileOutputStream(targetFile));
@@ -198,6 +210,7 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 			targetOut.flush();
 			targetOut.close();
 			sourceIn.close();
+			targetFile.setLastModified(sourceFile.lastModified());
 			System.out.println(" ==> installed");
 			return true;
 		}
@@ -224,10 +237,10 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 	 * Install a sub application in the execution folder of the latter based on
 	 * its main JAR, including all dependencies listed in the 'Class-Path' line
 	 * of its 'MANIFEST.MF' entry. This method also replaces existing JARs in
-	 * the target folder if a more recent version is found in from the source
-	 * folder. If throwing an exception on failure is set to false, the return
-	 * value indicates installation success; if it is set to true, this method
-	 * will either return true or throw an exception.
+	 * the target folder if a more recent version is found in the source folder.
+	 * If throwing an exception on failure is set to false, the return value
+	 * indicates installation success; if it is set to true, this method will
+	 * either return true or throw an exception.
 	 * @param name the name of the JAR to install
 	 * @param sourceFolder the folder to find the JAR from
 	 * @param targetFolder the folder to install the JAR in
@@ -301,14 +314,16 @@ public class SlaveInstallerUtils implements GoldenGateServerConstants {
 		System.out.println(" - found class path in main JAR: " + mainJarClassPath);
 		
 		//	install dependencies
-		String[] requiredJarNames = mainJarClassPath.split("\\s+");
-		for (int j = 0; j < requiredJarNames.length; j++) {
-			if (!installJar(requiredJarNames[j], sourceFolder, targetFolder, throwExceptionOnFail))
-				return false;
-		}
 		if (mainJarClassPath.length() == 0)
 			System.out.println(" - no dependencies to install");
-		else System.out.println("Installing main JAR '" + name + "' in " + targetFolder.getAbsolutePath());
+		else {
+			System.out.println("Installing main JAR '" + name + "' in " + targetFolder.getAbsolutePath());
+			String[] requiredJarNames = mainJarClassPath.split("\\s+");
+			for (int j = 0; j < requiredJarNames.length; j++) {
+				if (!installJar(requiredJarNames[j], sourceFolder, targetFolder, throwExceptionOnFail))
+					return false;
+			}
+		}
 		
 		//	install main JAR proper
 		return installFile(mainSourceJar, "JAR", targetFolder, throwExceptionOnFail);

@@ -95,6 +95,18 @@ public class AuthenticatedClient implements UserAccessAuthorityConstants {
 	}
 	
 	/**
+	 * retrieve a one-time connection object from this client's server
+	 * connection (shortcut for getServerConnection().getConnection())
+	 * @param connectTimeoutMillis the connect timeout in milliseconds
+	 * @param readTimeoutMillis the read timeout in milliseconds
+	 * @return a one-time Connection object for one interaction with the backing
+	 *         server
+	 */
+	public Connection getConnection(int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
+		return this.serverConnection.getConnection(connectTimeoutMillis, readTimeoutMillis);
+	}
+	
+	/**
 	 * retrieve this client's server connection to communicate with the backing
 	 * server.
 	 * @return this client's server connection

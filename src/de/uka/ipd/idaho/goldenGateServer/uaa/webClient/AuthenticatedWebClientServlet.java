@@ -39,9 +39,9 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader;
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader.ComponentInitializer;
 import de.uka.ipd.idaho.easyIO.web.WebAppHost.AuthenticationProvider;
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader;
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentInitializer;
 import de.uka.ipd.idaho.goldenGateServer.client.GgServerHtmlServlet;
 import de.uka.ipd.idaho.goldenGateServer.client.GgServerWebFrontendLogger;
 import de.uka.ipd.idaho.goldenGateServer.uaa.UserAccessAuthorityConstants;
@@ -476,7 +476,7 @@ public class AuthenticatedWebClientServlet extends GgServerHtmlServlet implement
 		if(!modulFolder.exists()) modulFolder.mkdir();
 		
 		//	load moduls
-		Object[] modulObjects = GamtaClassLoader.loadComponents(
+		Object[] modulObjects = ComponentClassLoader.loadComponents(
 				modulFolder, 
 				AuthenticatedWebClientModul.class, 
 				new ComponentInitializer() {

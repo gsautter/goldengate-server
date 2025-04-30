@@ -39,6 +39,12 @@ public interface GoldenGateElsConstants extends DataObjectUpdateConstants {
 	/** the user name GoldenGATE ELS uses to write to data objects */
 	public static final String UPDATE_USER_NAME = "ExternalLinkService";
 	
+	/** the maximum length (in characters) of a link type that GoldenGATE ELS can handle */
+	public static final int LINK_TYPE_MAX_LENGHT = 32;
+	
+	/** the maximum length (in characters) of a link value that GoldenGATE ELS can handle  */
+	public static final int LINK_STRING_MAX_LENGHT = 128;
+	
 	/**
 	 * An external link, i.e., a reference from a document or a detail inside a
 	 * document to an external address or other document detail.

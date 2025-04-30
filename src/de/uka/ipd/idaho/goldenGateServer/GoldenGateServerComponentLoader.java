@@ -30,9 +30,9 @@ package de.uka.ipd.idaho.goldenGateServer;
 
 import java.io.File;
 
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader;
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentInitializer;
-import de.uka.ipd.idaho.gamta.util.GamtaClassLoader.ComponentLoadErrorLogger;
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader;
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader.ComponentInitializer;
+import de.uka.ipd.idaho.easyIO.util.ComponentClassLoader.ComponentLoadErrorLogger;
 
 /**
  * Loader utility for creating server component instances
@@ -75,7 +75,7 @@ public class GoldenGateServerComponentLoader {
 			componentFolder.mkdir();
 		
 		//	get components
-		Object[] componentObject = GamtaClassLoader.loadComponents(
+		Object[] componentObject = ComponentClassLoader.loadComponents(
 				componentFolder,
 				GoldenGateServerComponent.class,
 				new ComponentInitializer() {

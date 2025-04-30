@@ -91,7 +91,7 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	public void setHost(GoldenGateServerComponentHost host) {
 		this.host = host;
 	}
-
+	
 	/* (non-Javadoc)
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#init()
 	 */
@@ -136,7 +136,19 @@ public abstract class AbstractGoldenGateServerComponent implements GoldenGateSer
 	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#linkInit()
 	 */
 	public void linkInit() {}
-
+	
+	/**
+	 * Prepare the server component for shutdown, finish business with other
+	 * components, etc. This method is called before <code>exit()</code>, when
+	 * other components are still functional. Implementations should still keep
+	 * their components ready to react normally to method calls from other
+	 * components, but should finish and cease any proactive action. This
+	 * default implementation does nothing, sub classes are welcome to
+	 * overwrite it as needed.
+	 * @see de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent#prepareExit()
+	 */
+	public void prepareExit() {}
+	
 	/* (non-Javadoc)
 	 * @see de.goldenGateScf.ServerComponent#exit()
 	 */

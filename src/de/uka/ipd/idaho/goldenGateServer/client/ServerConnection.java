@@ -35,6 +35,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
+import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.Socket;
 import java.net.URL;
@@ -90,19 +91,18 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	 */
 	
 	/**
-	 * Generic representation of a connection to the backend server, consisting of a
-	 * writer for sending a request and a reader for receiving the response. Note
-	 * that using the writer after it was flushed is not a good idea in the general
-	 * case, since it may cause problems with URL based connections.
+	 * Generic representation of a connection to the back-end server,
+	 * consisting of a writer for sending a request and a reader for receiving
+	 * the response. Note that using the writer after it was flushed is not a
+	 * good idea in the general case, since it may cause problems with URL
+	 * based connections.
 	 * 
 	 * @author sautter
 	 */
 	public abstract static class Connection {
-//		private BufferedOutputStream bos;
 		private BufferedLineOutputStream blos;
 		private BufferedWriter bw;
 		
-//		private BufferedInputStream bis;
 		private BufferedLineInputStream blis;
 		private BufferedReader br;
 		
@@ -111,20 +111,6 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		 * @return an InputStream for the underlying connection
 		 */
 		protected abstract InputStream produceInputStream() throws IOException;
-//		
-//		/**
-//		 * Retrieve an InputStream for reading data from this connection.
-//		 * If this connection is based on a URL, this method should not be
-//		 * invoked before all output is written. Using both the Reader
-//		 * returned by getReader() and the InputStream returned by this method
-//		 * may cause errors.
-//		 * @return an InputStream for reading data from this connection
-//		 */
-//		public InputStream getInputStream() throws IOException {
-//			if (this.bis == null)
-//				this.bis = new BufferedInputStream(this.produceInputStream());
-//			return this.bis;
-//		}
 		
 		/**
 		 * Retrieve an InputStream for reading data from this connection.
@@ -161,21 +147,6 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		 * @return an OutputStream for the underlying connection
 		 */
 		protected abstract OutputStream produceOutputStream() throws IOException;
-//		
-//		/**
-//		 * Retrieve an OutputStream for writing data to this connection. If this
-//		 * connection is based on a URL, writing data to the OutputStream
-//		 * returned by this method might not work any more after
-//		 * getInputStream() or getReader() has been invoked. Using both the
-//		 * Writer returned by getWriter() and the OutputStream returned by this
-//		 * method may cause errors.
-//		 * @return an OutputStream for writing data to this connection
-//		 */
-//		public OutputStream getOutputStream() throws IOException {
-//			if (this.bos == null)
-//				this.bos = new BufferedOutputStream(this.produceOutputStream());
-//			return this.bos;
-//		}
 		
 		/**
 		 * Retrieve an OutputStream for writing data to this connection. If this
@@ -216,15 +187,11 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		public void close() throws IOException {
 			if (this.bw != null)
 				this.bw.close();
-//			else if (this.bos != null)
-//				this.bos.close();
 			else if (this.blos != null)
 				this.blos.close();
 			
 			if (this.br != null)
 				this.br.close();
-//			else if (this.bis != null)
-//				this.bis.close();
 			else if (this.blis != null)
 				this.blis.close();
 		}
@@ -278,7 +245,7 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 				if (cr != null) {
 					if (DEBUG) System.out.println("  got connection request");
 					try {
-						Connection con = cr.sCon.produceConnection();
+						Connection con = cr.sCon.produceConnection(cr.connectTimeoutMillis, cr.readTimeoutMillis);
 						if (DEBUG) System.out.println("  got connection");
 						cr.setConnection(con, null);
 						if (DEBUG) System.out.println("  connection passed to request");
@@ -300,11 +267,15 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	
 	private static class ConnectionRequest {
 		ServerConnection sCon;
+		int connectTimeoutMillis;
+		int readTimeoutMillis;
 		private Object lock = new Object();
 		private Connection con;
 		private IOException ioe;
-		ConnectionRequest(ServerConnection sCon) {
+		ConnectionRequest(ServerConnection sCon, int connectTimeoutMillis, int readTimeoutMillis) {
 			this.sCon = sCon;
+			this.connectTimeoutMillis = connectTimeoutMillis;
+			this.readTimeoutMillis = readTimeoutMillis;
 		}
 		Connection getConnection() throws IOException {
 			synchronized(connectionRequestQueue) {
@@ -384,17 +355,77 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 			}
 		}
 	}
-
+	
+	int connectTimeoutMillis = 0;
+	int readTimeoutMillis = 0;
+	
+	/**
+	 * Retrieve the connect timeout (in milliseconds). If no connect timeout
+	 * has been set, this method returns 0.
+	 * @return the connect timeout in milliseconds
+	 */
+	public int getConnectTimeoutMillis() {
+		return this.connectTimeoutMillis;
+	}
+	
+	/**
+	 * Set the connect timeout (in milliseconds). The connect timeout applies
+	 * to all connections retrieved from the <code>getConnection()</code>
+	 * method. Setting the connect timeout to a value less than 1 effectively
+	 * deactivates connect timeouts.
+	 * @param timeout the the connect timeout to set
+	 */
+	public void setConnectTimeoutMillis(int timeout) {
+		this.connectTimeoutMillis = timeout;
+	}
+	
+	/**
+	 * Retrieve the read timeout (in milliseconds). If no read timeout has been
+	 * set, this method returns 0.
+	 * @return the read timeout in milliseconds
+	 */
+	public int getReadTimeoutMillis() {
+		return this.readTimeoutMillis;
+	}
+	
+	/**
+	 * Set the read timeout (in milliseconds). The read timeout applies to all
+	 * connections retrieved from the <code>getConnection()</code> method.
+	 * Setting the read timeout to a value less than 1 effectively deactivates
+	 * read timeouts.
+	 * @param timeout the the read timeout to set
+	 */
+	public void setReadTimeoutMillis(int timeout) {
+		this.readTimeoutMillis = timeout;
+	}
+	
 	/**
 	 * @return a Connection for one interaction with the backing server. You
 	 *         should close the connection when you are done using it.
 	 */
 	public Connection getConnection() throws IOException {
 		if (connectorService == null)
-			return this.produceConnection();
+			return this.produceConnection(-1, -1);
 		else {
 			if (DEBUG) System.out.println("ServerConnection: producing connection asynchronously ...");
-			ConnectionRequest cr = new ConnectionRequest(this);
+			ConnectionRequest cr = new ConnectionRequest(this, -1, -1);
+			if (DEBUG) System.out.println("  request created");
+			return cr.getConnection();
+		}
+	}
+	
+	/**
+	 * @param connectTimeoutMillis the connect timeout in milliseconds
+	 * @param readTimeoutMillis the read timeout in milliseconds
+	 * @return a Connection for one interaction with the backing server. You
+	 *         should close the connection when you are done using it.
+	 */
+	public Connection getConnection(int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
+		if (connectorService == null)
+			return this.produceConnection(connectTimeoutMillis, readTimeoutMillis);
+		else {
+			if (DEBUG) System.out.println("ServerConnection: producing connection asynchronously ...");
+			ConnectionRequest cr = new ConnectionRequest(this, connectTimeoutMillis, readTimeoutMillis);
 			if (DEBUG) System.out.println("  request created");
 			return cr.getConnection();
 		}
@@ -403,10 +434,12 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	/**
 	 * Produce a connection. The deviation from getConnection() is necessary due
 	 * to the connector service thread.
+	 * @param connectTimeoutMillis the connect timeout in milliseconds
+	 * @param readTimeoutMillis the read timeout in milliseconds
 	 * @return a Connection for one interaction with the backing server
 	 * @throws IOException
 	 */
-	protected abstract Connection produceConnection() throws IOException;
+	protected abstract Connection produceConnection(int connectTimeoutMillis, int readTimeoutMillis) throws IOException;
 	
 	/**
 	 * Test whether or not the Connections returned by this ServerConnections
@@ -417,6 +450,13 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 	 *         plain socket connections, false otherwise
 	 */
 	public abstract boolean isDirectSocket();
+	
+	/**
+	 * Close the server connection. After a call to this method, any call to
+	 * <code>getConnection()</code> may fail on the specific instance.
+	 * @throws IOException
+	 */
+	public void close() throws IOException {}
 	
 	//	connection pool to make server connections singletons for each remote address
 	private static Map serverConnectionPool = Collections.synchronizedMap(new HashMap());
@@ -432,23 +472,56 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		ServerConnection con = ((ServerConnection) serverConnectionPool.get(host + ":" + port));
 		if (con == null) {
 			con = new ServerConnection() {
-				protected Connection produceConnection() throws IOException {
+				boolean closed = false;
+				protected Connection produceConnection(int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
 					if (DEBUG) System.out.println("ServerConnection: connecting to " + host + " on port " + port);
-					final Socket sock = new Socket(host, port);
-					return new Connection() {
-						protected InputStream produceInputStream() throws IOException {
-							return sock.getInputStream();
+					for (int attempt = 1;; attempt++) try {
+						if (this.closed)
+							throw new IOException("This server connection is closed");
+						final Socket sock = new Socket(host, port);
+//						if (0 <= readTimeoutMillis)
+//							sock.setSoTimeout(this.readTimeoutMillis);
+//						else if (0 < this.readTimeoutMillis)
+//							sock.setSoTimeout(this.readTimeoutMillis);
+						if (readTimeoutMillis < 0)
+							readTimeoutMillis = this.readTimeoutMillis;
+						if (0 < readTimeoutMillis)
+							sock.setSoTimeout(readTimeoutMillis);
+						return new Connection() {
+							protected InputStream produceInputStream() throws IOException {
+								return sock.getInputStream();
+							}
+							protected OutputStream produceOutputStream() throws IOException {
+								return sock.getOutputStream();
+							}
+							public void close() throws IOException {
+								super.close();
+								sock.close();
+							}
+						};
+					}
+					catch (ConnectException ce) /* throw instantaneously if remote end restarting */ {
+						if (10 < attempt)
+							throw ce; // we've waited for total of 55 seconds, something is utterly off
+						if (DEBUG) System.out.println("ServerConnection: failed to connect to " + host + " on port " + port + " (" + attempt + "), will retry in a moment");
+						for (int w = 0; w < attempt; w++) {
+							if (this.closed)
+								throw ce; // disrupted by closing
+							try {
+								Thread.sleep(1000);
+							} catch (InterruptedException ie) {}
 						}
-						protected OutputStream produceOutputStream() throws IOException {
-							return sock.getOutputStream();
-						}
-					};
+					}
 				}
 				public String toString() {
 					return (host + ":" + port);
 				}
 				public boolean isDirectSocket() {
 					return true;
+				}
+				public void close() throws IOException {
+					serverConnectionPool.remove(this.toString());
+					this.closed = true;
 				}
 			};
 			serverConnectionPool.put(con.toString(), con);
@@ -466,7 +539,7 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 		ServerConnection srvCon = ((ServerConnection) serverConnectionPool.get(urlStr));
 		if (srvCon == null) {
 			srvCon = new ServerConnection() {
-				protected Connection produceConnection() throws IOException {
+				protected Connection produceConnection(int connectTimeoutMillis, int readTimeoutMillis) throws IOException {
 					if (DEBUG) System.out.println("ServerConnection: connecting to " + urlStr);
 					URL url = new URL(urlStr);
 					if (DEBUG) System.out.println(" - got URL: " + url);
@@ -475,6 +548,22 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 					httpCon.setDoOutput(true);
 					httpCon.setDoInput(true);
 					httpCon.setUseCaches(false);
+//					if (0 <= connectTimeoutMillis)
+//						httpCon.setConnectTimeout(connectTimeoutMillis);
+//					else if (0 < this.connectTimeoutMillis)
+//						httpCon.setConnectTimeout(this.connectTimeoutMillis);
+					if (connectTimeoutMillis < 0)
+						connectTimeoutMillis = this.connectTimeoutMillis;
+					if (0 < connectTimeoutMillis)
+						httpCon.setConnectTimeout(connectTimeoutMillis);
+//					if (0 <= readTimeoutMillis)
+//						httpCon.setReadTimeout(readTimeoutMillis);
+//					else if (0 < this.readTimeoutMillis)
+//						httpCon.setReadTimeout(this.readTimeoutMillis);
+					if (readTimeoutMillis < 0)
+						readTimeoutMillis = this.readTimeoutMillis;
+					if (0 < readTimeoutMillis)
+						httpCon.setReadTimeout(readTimeoutMillis);
 					httpCon.setRequestMethod("POST");
 					httpCon.setRequestProperty("Host", url.getHost());
 					httpCon.setRequestProperty("User-Agent", "GoldenGATE Server Client");
@@ -511,6 +600,10 @@ public abstract class ServerConnection implements GoldenGateServerConstants {
 						}
 						protected OutputStream produceOutputStream() throws IOException {
 							return httpCon.getOutputStream();
+						}
+						public void close() throws IOException {
+							super.close();
+							httpCon.disconnect();
 						}
 					};
 				}

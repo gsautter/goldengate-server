@@ -27,6 +27,11 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.ada;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.util.ArrayList;
 
 import de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent;
@@ -53,6 +58,27 @@ public class GoldenGateAdaConsole extends AbstractGoldenGateServerComponent {
 	 * @see de.uka.ipd.idaho.goldenGateServer.AbstractGoldenGateServerComponent#initComponent()
 	 */
 	protected void initComponent() {
+		
+		//	load list of paused starting action handler names
+		File spFile = new File(this.dataPath, "startPaused.cnfg");
+		if (spFile.exists()) try {
+			BufferedReader spBr = new BufferedReader(new InputStreamReader(new FileInputStream(spFile), "UTF-8"));
+			for (String spRow; (spRow = spBr.readLine()) != null;) {
+				spRow = spRow.trim();
+				if (spRow.length() == 0)
+					continue;
+				if (spRow.startsWith("//"))
+					continue;
+				AsynchronousDataActionHandler.setStartPaused(spRow);
+			}
+			spBr.close();
+		}
+		catch (IOException ioe) {
+			System.out.println("GoldenGateAEP: failed to load list of instance names to start paused: " + ioe.getMessage());
+			ioe.printStackTrace(System.out);
+		}
+		
+		//	retrieve console interface, also sealing paused instance list
 		this.consoleInterface = AsynchronousDataActionHandler.getConsoleInterface();
 	}
 	

@@ -134,11 +134,32 @@ public class SlaveProcessInterface {
 		errInThread.start();
 	}
 	
+	/* TODO Facilitate diagnosing slave job problems under load in GG Server:
+- problem basically is that responses from slave job's master process interface come out as background job info-level logging ...
+- ... obscuring them between other such output (which can be considerable under hight update load) ...
+- ... and increasing minimum console output log level for background jobs would filter desired debug responses indiscriminately
+  ==> need to turn response to slave job diagnosis commands into console command output ...
+  ==> ... and thus somehow hand over console action sending command to dedicated slave job output receiver thread
+- might prefix lines sending diagnosis commands with tag like '<currentTimeMilis>@<masterLetterCode>' or something ...
+- ... and prefix response lines with same tag ...
+- ... adding terminating last empty line ...
+- ... or maybe line containing single 0x04 byte (ASCII 'EOT' or 'end of transmission')
+- at same time need to map tag to requesting console action (for receiving thread to probe if leading tag present on incoming line) ...
+- ... removing mapping when terminating last line of response received
+==> should be fine with local slave jobs ...
+==> ... but might cause trouble with remote slave jobs that send data back in zipped streams ...
+==> ... if not in slave job interfaces, but in general (envisioned as prefix based) message routing protocol of slave job master
+  ==> simple solution: send binary zipped result data streams via different servlet ...
+  ==> ... using upload token retrieved via text based channel in authentication header
+    ==> IN FACT, ask Johannes about protecting against excessive headers that might be used for DOS
+	 */
+	
 	/**
 	 * Instruct the slave JVM to report a list of its threads to the
 	 * <code>handleResult()</code> method.
 	 */
 	public void listThreads() {
+		//	TODO facilitate accepting argument console action to report result to
 		this.toSlave.println(MasterProcessInterface.LIST_THREADS_COMMAND);
 	}
 	
@@ -147,6 +168,7 @@ public class SlaveProcessInterface {
 	 * <code>handleResult()</code> method.
 	 */
 	public void listThreadGroups() {
+		//	TODO facilitate accepting argument console action to report result to
 		this.toSlave.println(MasterProcessInterface.LIST_THREAD_GROUPS_COMMAND);
 	}
 	
@@ -157,6 +179,7 @@ public class SlaveProcessInterface {
 	 * @param threadName the name of the thread whose stack to get
 	 */
 	public void printThreadStack(String threadName) {
+		//	TODO facilitate accepting argument console action to report result to
 		this.toSlave.println(MasterProcessInterface.THREAD_STACK_COMMAND + ((threadName == null) ? "" : (":" + threadName)));
 	}
 	
@@ -169,6 +192,7 @@ public class SlaveProcessInterface {
 	 * @param threadName the name of the thread to wake
 	 */
 	public void wakeThread(String threadName) {
+		//	TODO facilitate accepting argument console action to report result to
 		this.toSlave.println(MasterProcessInterface.WAKE_THREAD_COMMAND + ((threadName == null) ? "" : (":" + threadName)));
 	}
 	
@@ -181,6 +205,7 @@ public class SlaveProcessInterface {
 	 * @param threadName the name of the thread to kill
 	 */
 	public void killThread(String threadName) {
+		//	TODO facilitate accepting argument console action to report result to
 		this.toSlave.println(MasterProcessInterface.KILL_THREAD_COMMAND + ((threadName == null) ? "" : (":" + threadName)));
 		if (threadName == null)
 			this.slave.destroy();
@@ -191,6 +216,8 @@ public class SlaveProcessInterface {
 	 * @param output the output to send
 	 */
 	public void sendOutput(String output) {
+		//	TODO facilitate accepting argument console action to report result to ...
+		//	TODO ... and also facilities for subclasses to register their argument console actions on custom debug functionality
 		this.toSlave.println(output);
 	}
 	

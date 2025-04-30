@@ -122,40 +122,34 @@ public class UserList extends StringRelation implements UserAccessAuthorityConst
 	 */
 	public static UserList readUserList(Reader in) throws IOException {
 		final ArrayList userDataList = new ArrayList();
-		final Grammar grammar = new StandardGrammar();
-		final Parser parser = new Parser(grammar);
-		
-//		try {
-			TokenReceiver sr = new TokenReceiver() {
-				public void close() throws IOException {}
-				public void storeToken(String token, int treeDepth) throws IOException {
-					if (grammar.isTag(token) && !grammar.isEndTag(token)) {
-						if (UserList.USER_NODE_NAME.equals(grammar.getType(token)) && !grammar.isEndTag(token)) {
-							TreeNodeAttributeSet tnas = TreeNodeAttributeSet.getTagAttributes(token, grammar);
-							StringTupel st = new StringTupel();
-							String[] attributeNames = tnas.getAttributeNames();
-							for (int a = 0; a < attributeNames.length; a++) {
-								String attributeValue = tnas.getAttribute(attributeNames[a]);
-								if (attributeValue != null)
-									st.setValue(attributeNames[a], attributeValue);
-							}
-							
-							if (st.size() != 0)
-								userDataList.add(st);
+		TokenReceiver sr = new TokenReceiver() {
+			public void close() throws IOException {}
+			public void storeToken(String token, int treeDepth) throws IOException {
+				if (grammar.isTag(token) && !grammar.isEndTag(token)) {
+					if (UserList.USER_NODE_NAME.equals(grammar.getType(token)) && !grammar.isEndTag(token)) {
+						TreeNodeAttributeSet tnas = TreeNodeAttributeSet.getTagAttributes(token, grammar);
+						String[] attributeNames = tnas.getAttributeNames();
+						StringTupel st = new StringTupel(attributeNames.length);
+						for (int a = 0; a < attributeNames.length; a++) {
+							String attributeValue = tnas.getAttribute(attributeNames[a]);
+							if (attributeValue != null)
+								st.setValue(attributeNames[a], attributeValue);
 						}
+						
+						if (st.size() != 0)
+							userDataList.add(st);
 					}
 				}
-			};
-			
-			parser.stream(in, sr);
-			
-			UserList userList = new UserList();
-			for (int e = 0; e < userDataList.size(); e++)
-				userList.addElement((StringTupel) userDataList.get(e));
-			return userList;
-//		}
-//		catch (ParseException pe) {
-//			throw new IOException(pe.getMessage());
-//		}
+			}
+		};
+		
+		parser.stream(in, sr);
+		
+		UserList userList = new UserList();
+		for (int e = 0; e < userDataList.size(); e++)
+			userList.addElement((StringTupel) userDataList.get(e));
+		return userList;
 	}
+	private static final Grammar grammar = new StandardGrammar();
+	private static final Parser parser = new Parser(grammar);
 }

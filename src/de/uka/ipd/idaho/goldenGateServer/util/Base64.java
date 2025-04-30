@@ -27,13 +27,15 @@
  */
 package de.uka.ipd.idaho.goldenGateServer.util;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 
 
 /**
  * Utility class for base 64 encoding and decoding
  * 
  * @author sautter
+ * 
+ * @deprecated use de.uka.ipd.idaho.easyIO.streams.Base64
  */
 public class Base64 {
 	static final char paddingChar = '=';
@@ -41,53 +43,68 @@ public class Base64 {
 		"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
 		"abcdefghijklmnopqrstuvwxyz" +
 		"0123456789" +
-		"+-";
-	static final int decodeBase64Char(char c) {
-		if (('A' <= c) && (c <= 'Z'))
-			return (c - 'A');
-		else if (('a' <= c) && (c <= 'z'))
-			return (c - 'a' + 26);
-		else if (('0' <= c) && (c <= '9'))
-			return (c - '0' + 52);
-		else return ((c == '+') ? 62 : 63);
+		"+/";
+	static final int decodeBase64Char(char ch) {
+		if (('A' <= ch) && (ch <= 'Z'))
+			return (ch - 'A');
+		else if (('a' <= ch) && (ch <= 'z'))
+			return (ch - 'a' + 26);
+		else if (('0' <= ch) && (ch <= '9'))
+			return (ch - '0' + 52);
+		else return ((ch == '+') ? 62 : 63);
 	}
+	
 	/**
 	 * Encode an array of bytes into a Base64 string
 	 * @param bytes the bytes to encode
 	 * @return the Base64 code of the specified bytes
 	 */
 	public static final String encode(int[] bytes) {
-		StringBuffer bytesAsBase64 = new StringBuffer();
+		StringBuffer base64 = new StringBuffer();
 		int[] byteBlockBuffer = new int[3];
-		int byteBlockSize;
-		String charBlockPadding = "";
 		
 		for (int b = 0; b < bytes.length; b += 3) {
-			byteBlockSize = Math.min((bytes.length - b), 3);
+			int byteBlockSize = Math.min((bytes.length - b), 3);
 			System.arraycopy(bytes, b, byteBlockBuffer, 0, byteBlockSize);
-			while (byteBlockSize < 3) {
-				byteBlockBuffer[byteBlockSize++] = 0;
-				charBlockPadding += paddingChar;
-			}
+			if (byteBlockSize < byteBlockBuffer.length)
+				Arrays.fill(byteBlockBuffer, byteBlockSize, byteBlockBuffer.length, 0);
+//			while (byteBlockSize < 3) {
+//				byteBlockBuffer[byteBlockSize++] = 0;
+//				charBlockPadding += paddingChar;
+//			}
 			
-			// these three 8-bit (ASCII) characters become one 24-bit number
-			int byteBlock = ((byteBlockBuffer[0] & 255) << 16) + ((byteBlockBuffer[1] & 255) << 8) + (byteBlockBuffer[2] & 255);
-			
-			// this 24-bit number gets separated into four 6-bit numbers
-			int[] byteBlockCodes = {(byteBlock >>> 18) & 63, (byteBlock >>> 12) & 63, (byteBlock >>> 6) & 63, (byteBlock & 63)};
-			
-			// those four 6-bit numbers are used as indices into the base64 character list
-			String charBlock = (
-					"" + Base64.base64chars.charAt(byteBlockCodes[0]) +
-					"" + Base64.base64chars.charAt(byteBlockCodes[1]) +
-					"" + Base64.base64chars.charAt(byteBlockCodes[2]) +
-					"" + Base64.base64chars.charAt(byteBlockCodes[3])
-					);
-			
-			charBlock = (charBlock.substring(0, (4 - charBlockPadding.length())) + charBlockPadding);
-			bytesAsBase64.append(charBlock);
+			// these three bytes become one 24-bit number
+			int byteBlock = (
+					((byteBlockBuffer[0] & 0xFF) << 16)
+					|
+					((byteBlockBuffer[1] & 0xFF) << 8)
+					|
+					((byteBlockBuffer[2] & 0xFF) << 0)
+				);
+//			
+//			// this 24-bit number gets separated into four 6-bit numbers
+//			int[] byteBlockCodes = {
+//					((byteBlock >>> 18) & 0x3F),
+//					((byteBlock >>> 12) & 0x3F),
+//					((byteBlock >>> 6) & 0x3F),
+//					(byteBlock & 0x3F)
+//				};
+//			
+//			// those four 6-bit numbers are used as indices into the base64 character list
+//			String charBlock = (
+//					"" + base64chars.charAt(byteBlockCodes[0]) +
+//					"" + base64chars.charAt(byteBlockCodes[1]) +
+//					"" + base64chars.charAt(byteBlockCodes[2]) +
+//					"" + base64chars.charAt(byteBlockCodes[3])
+//					);
+//			charBlock = (charBlock.substring(0, (4 - charBlockPadding.length())) + charBlockPadding);
+//			base64.append(charBlock);
+			base64.append(base64chars.charAt((byteBlock >>> 18) & 0x3F));
+			base64.append(base64chars.charAt((byteBlock >>> 12) & 0x3F));
+			base64.append((byteBlockSize < 2) ? paddingChar : base64chars.charAt((byteBlock >>> 6) & 0x3F));
+			base64.append((byteBlockSize < 3) ? paddingChar : base64chars.charAt((byteBlock >>> 0) & 0x3F));
 		}
-		return bytesAsBase64.toString();
+		return base64.toString();
 	}
 	
 	/**
@@ -95,30 +112,57 @@ public class Base64 {
 	 * @param base64 the Base64 string to decode
 	 * @return the bytes encoded in the specified string
 	 */
-	public static final int[] decode(String base64) {
-		ArrayList intList = new ArrayList();
-		char[] chars = new char[4];
-		for (int b = 0; b < base64.length(); b += 4) {
-			for (int c = 0; c < 4; c++)
-				chars[c] = base64.charAt(b + c);
-			boolean lastIsPad = (chars[3] == Base64.paddingChar);
-			boolean secondLastIsPad = (chars[2] == Base64.paddingChar);
-			int[] byteBlockCodes = {
-					Base64.decodeBase64Char(chars[0]), 
-					Base64.decodeBase64Char(chars[1]), 
-					(secondLastIsPad ? 0 : Base64.decodeBase64Char(chars[2])), 
-					(lastIsPad ? 0 : Base64.decodeBase64Char(chars[3]))
-					};
-			int byteBlock = (byteBlockCodes[0] << 18) + (byteBlockCodes[1] << 12) + (byteBlockCodes[2] << 6) + byteBlockCodes[3];
-			intList.add(new Integer((byteBlock >>> 16) & 255));
-			if (!secondLastIsPad)
-				intList.add(new Integer((byteBlock >>> 8) & 255));
-			if (!lastIsPad)
-				intList.add(new Integer(byteBlock & 255));
+	public static final byte[] decode(String base64) {
+		int byteCount = ((base64.length() / 4) * 3);
+		if (base64.endsWith("" + paddingChar + "" + paddingChar))
+			byteCount -= 2;
+		else if (base64.endsWith("" + paddingChar))
+			byteCount -= 1;
+		byte[] bytes = new byte[byteCount];
+		int bytePos = 0;
+		char[] charBlock = new char[4];
+		for (int c = 0; c < base64.length(); c += 4) {
+			base64.getChars(c, (c + charBlock.length), charBlock, 0);
+			int byteBlock = (
+					(decodeBase64Char(charBlock[0]) << 18)
+					|
+					(decodeBase64Char(charBlock[1]) << 12)
+					|
+					((charBlock[2] == paddingChar) ? 0 : (decodeBase64Char(charBlock[2]) << 6))
+					|
+					((charBlock[3] == paddingChar) ? 0 : (decodeBase64Char(charBlock[3]) << 0))
+				);
+			bytes[bytePos++] = ((byte) ((byteBlock >>> 16) & 0xFF));
+			if (bytePos < bytes.length)
+				bytes[bytePos++] = ((byte) ((byteBlock >>> 8) & 0xFF));
+			if (bytePos < bytes.length)
+				bytes[bytePos++] = ((byte) ((byteBlock >>> 0) & 0xFF));
 		}
-		int[] plainBytes = new int[intList.size()];
-		for (int i = 0; i < intList.size(); i++)
-			plainBytes[i] = ((Integer) intList.get(i)).intValue();
-		return plainBytes;
+		return bytes;
 	}
+//	public static final int[] decode(String base64) {
+//		ArrayList intList = new ArrayList();
+//		char[] chars = new char[4];
+//		for (int b = 0; b < base64.length(); b += 4) {
+//			base64.getChars(b, (b + chars.length), chars, 0);
+//			boolean lastIsPad = (chars[3] == paddingChar);
+//			boolean secondLastIsPad = (chars[2] == paddingChar);
+//			int[] byteBlockCodes = {
+//					decodeBase64Char(chars[0]), 
+//					decodeBase64Char(chars[1]), 
+//					(secondLastIsPad ? 0 : decodeBase64Char(chars[2])), 
+//					(lastIsPad ? 0 : decodeBase64Char(chars[3]))
+//					};
+//			int byteBlock = ((byteBlockCodes[0] << 18) | (byteBlockCodes[1] << 12) | (byteBlockCodes[2] << 6) | byteBlockCodes[3]);
+//			intList.add(new Integer((byteBlock >>> 16) & 0xFF));
+//			if (!secondLastIsPad)
+//				intList.add(new Integer((byteBlock >>> 8) & 0xFF));
+//			if (!lastIsPad)
+//				intList.add(new Integer(byteBlock & 0xFF));
+//		}
+//		int[] plainBytes = new int[intList.size()];
+//		for (int i = 0; i < intList.size(); i++)
+//			plainBytes[i] = ((Integer) intList.get(i)).intValue();
+//		return plainBytes;
+//	}
 }

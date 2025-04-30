@@ -449,7 +449,8 @@ public class DataUploader extends JFrame implements GoldenGateConstants {
 		
 		//	load local parameters
 		try {
-			StringVector parameters = StringVector.loadList(new File("./", PARAMETER_FILE_NAME));
+//			StringVector parameters = StringVector.loadList(new File("./", PARAMETER_FILE_NAME));
+			StringVector parameters = StringVector.loadList(new File("./", "Parameters.cnfg"));
 			for (int p = 0; p < parameters.size(); p++) try {
 				String param = parameters.get(p);
 				int split = param.indexOf('=');
@@ -463,13 +464,18 @@ public class DataUploader extends JFrame implements GoldenGateConstants {
 		} catch (Exception e) {}
 		
 		//	configure web access
-		if (config.containsKey(PROXY_NAME)) {
+//		if (config.containsKey(PROXY_NAME)) {
+		if (config.containsKey("PROXY_NAME")) {
 			System.getProperties().put("proxySet", "true");
-			System.getProperties().put("proxyHost", config.getSetting(PROXY_NAME));
-			if (config.containsKey(PROXY_PORT))
-				System.getProperties().put("proxyPort", config.getSetting(PROXY_PORT));
+//			System.getProperties().put("proxyHost", config.getSetting(PROXY_NAME));
+			System.getProperties().put("proxyHost", config.getSetting("PROXY_NAME"));
+//			if (config.containsKey(PROXY_PORT))
+			if (config.containsKey("PROXY_PORT"))
+//				System.getProperties().put("proxyPort", config.getSetting(PROXY_PORT));
+				System.getProperties().put("proxyPort", config.getSetting("PROXY_PORT"));
 			
-			if (config.containsKey(PROXY_USER) && config.containsKey(PROXY_PWD)) {
+//			if (config.containsKey(PROXY_USER) && config.containsKey(PROXY_PWD)) {
+			if (config.containsKey("PROXY_USER") && config.containsKey("PROXY_PWD")) {
 				//	initialize proxy authentication
 			}
 		}

@@ -30,14 +30,12 @@ package de.uka.ipd.idaho.goldenGateServer.enr.client;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
-import java.io.StringWriter;
 import java.io.Writer;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
-import de.uka.ipd.idaho.easyIO.streams.CharSequenceReader;
 import de.uka.ipd.idaho.goldenGateServer.aaa.webClient.GgServerApiServlet;
 import de.uka.ipd.idaho.goldenGateServer.client.ServerConnection.Connection;
 import de.uka.ipd.idaho.goldenGateServer.enr.GoldenGateEnrConstants;
@@ -131,16 +129,20 @@ public class GoldenGateEnrClientServlet extends GgServerApiServlet implements Go
 		
 		//	read request body ...
 		BufferedReader br = request.getReader();
-		StringWriter body = new StringWriter();
+//		StringWriter bodyBuffer = new StringWriter();
+		StringBuffer body = new StringBuffer();
 		if (br.ready()) {
 			char[] buffer = new char[1024];
 			for (int r; (r = br.read(buffer, 0, buffer.length)) != -1;)
-				body.write(buffer, 0, r);
+//				bodyBuffer.write(buffer, 0, r);
+				body.append(buffer, 0, r);
 		}
 		
 		//	... making sure it's not completely empty
-		if (body.getBuffer().length() == 0)
-			body.write("null");
+//		if (bodyBuffer.getBuffer().length() == 0)
+//			bodyBuffer.write("null");
+		if (body.length() == 0)
+			body.append("null");
 		
 		//	send request to back-end
 		Connection con = null;
@@ -157,13 +159,21 @@ public class GoldenGateEnrClientServlet extends GgServerApiServlet implements Go
 			bBw.newLine();
 			bBw.write(userName);
 			bBw.newLine();
-			CharSequenceReader csr = new CharSequenceReader(body.getBuffer());
+//			CharSequenceReader csr = new CharSequenceReader(bodyBuffer.getBuffer());
+			bBw.write("" + body.length());
+			bBw.newLine();
+//			CharSequenceReader csr = new CharSequenceReader(body);
 			char[] buffer = new char[1024];
-			for (int r; (r = csr.read(buffer, 0, buffer.length)) != -1;)
-				bBw.write(buffer, 0, r);
+//			for (int r; (r = csr.read(buffer, 0, buffer.length)) != -1;)
+//				bBw.write(buffer, 0, r);
+			for (int s = 0, l; s < body.length(); s += l) {
+				l = Math.min(buffer.length, (body.length() - s));
+				body.getChars(s, (s + l), buffer, 0);
+				bBw.write(buffer, 0, l);
+			}
 			bBw.newLine();
-			bBw.write("END_NOTIFICATION");
-			bBw.newLine();
+//			bBw.write("END_NOTIFICATION");
+//			bBw.newLine();
 			bBw.flush();
 			
 			//	relay back-end response

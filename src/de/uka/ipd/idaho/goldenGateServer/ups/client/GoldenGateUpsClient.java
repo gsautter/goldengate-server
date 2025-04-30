@@ -96,7 +96,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 	/**
-	 * Retrieve all users (requires administrative priviledges)
+	 * Retrieve all users (requires administrative privileges)
 	 * @return an array holding all users available in the backing server
 	 * @throws IOException
 	 */
@@ -105,7 +105,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 	/**
-	 * Retrieve all available roles (requires administrative priviledges)
+	 * Retrieve all available roles (requires administrative privileges)
 	 * @return an array holding all roles available in the UPS
 	 * @throws IOException
 	 */
@@ -114,7 +114,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 	/**
-	 * Retrieve all available permissions (requires administrative priviledges)
+	 * Retrieve all available permissions (requires administrative privileges)
 	 * @return an array holding all permissions available in the UPS
 	 * @throws IOException
 	 */
@@ -158,7 +158,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	
 //	/**
 //	 * Retrieve the permissions explicitly granted to a specific user, excluding
-//	 * the ones obtained from roles (requires administrative priviledges)
+//	 * the ones obtained from roles (requires administrative privileges)
 //	 * @param userName the user to retrieve the permissions for (specifying null
 //	 *            will result in all available permissions being returned)
 //	 * @return an array holding the permissions explicitly granted to the
@@ -171,7 +171,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	
 //	/**
 //	 * Grant a set of permissions to a user (requires administrative
-//	 * priviledges)
+//	 * privileges)
 //	 * @param userName the user to grant the permissions to
 //	 * @param permissions the permissions to grant to the specified user
 //	 * @throws IOException
@@ -182,7 +182,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	
 //	/**
 //	 * Remove a set of permissions from a user (requires administrative
-//	 * priviledges). This operation will not change permissions obtained through
+//	 * privileges). This operation will not change permissions obtained through
 //	 * roles.
 //	 * @param userName the user to remove the permissions from
 //	 * @param permissions the permissions to remove from the specified user
@@ -193,7 +193,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	}
 //	
 //	/**
-//	 * Set the permissions of a user (requires administrative priviledges). This
+//	 * Set the permissions of a user (requires administrative privileges). This
 //	 * operation will not change permissions obtained through roles.
 //	 * @param userName the user to set the permissions for
 //	 * @param permissions the permissions the specified user shall have from now
@@ -207,7 +207,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	
 	/**
 	 * Retrieve the roles explicitly granted to a specific user, excluding the
-	 * roles obtained through other roles (requires administrative priviledges)
+	 * roles obtained through other roles (requires administrative privileges)
 	 * @param userName the user to retrieve the roles for (specifying null will
 	 *            result in all available roles being returned)
 	 * @return an array holding the roles explicitly granted to the specified
@@ -219,7 +219,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 //	/**
-//	 * Grant a set of roles to a user (requires administrative priviledges)
+//	 * Grant a set of roles to a user (requires administrative privileges)
 //	 * @param userName the user to grant the roles to
 //	 * @param roles the roles to grant to the specified user
 //	 * @throws IOException
@@ -229,7 +229,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	}
 //	
 //	/**
-//	 * Remove a set of roles from a user (requires administrative priviledges).
+//	 * Remove a set of roles from a user (requires administrative privileges).
 //	 * This operation will not change roles obtained through other roles.
 //	 * @param userName the user to remove the roles from
 //	 * @param roles the roles to remove from the specified user
@@ -240,7 +240,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	}
 //	
 	/**
-	 * Set the roles of a user (requires administrative priviledges)
+	 * Set the roles of a user (requires administrative privileges)
 	 * @param userName the user to set the roles for
 	 * @param roles the roles the specified user shall have from now on
 	 * @throws IOException
@@ -250,7 +250,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 	/**
-	 * create a new role for the UPS (requires administrative priviledges)
+	 * create a new role for the UPS (requires administrative privileges)
 	 * @param roleName the name for the new role
 	 * @throws IOException
 	 */
@@ -287,7 +287,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 	/**
-	 * delete a role (requires administrative priviledges)
+	 * delete a role (requires administrative privileges)
 	 * @param roleName the name of the role to delete
 	 * @throws IOException
 	 */
@@ -326,7 +326,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	
 	/**
 	 * Retrieve the permissions explicitly granted to a specific role, excluding
-	 * the ones obtained from other roles (requires administrative priviledges)
+	 * the ones obtained from other roles (requires administrative privileges)
 	 * @param roleName the role to retrieve the permissions for
 	 * @return an array holding the permissions explicitly granted to the
 	 *         specified role
@@ -338,7 +338,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	
 //	/**
 //	 * Grant a set of permissions to a role (requires administrative
-//	 * priviledges)
+//	 * privileges)
 //	 * @param roleName the role to grant the permissions to
 //	 * @param permissions the permissions to grant to the specified role
 //	 * @throws IOException
@@ -349,7 +349,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	
 //	/**
 //	 * Remove a set of permissions from a role (requires administrative
-//	 * priviledges). This operation will not change permissions obtained through
+//	 * privileges). This operation will not change permissions obtained through
 //	 * other roles.
 //	 * @param roleName the role to remove the permissions from
 //	 * @param permissions the permissions to remove from the specified role
@@ -360,7 +360,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	}
 //	
 	/**
-	 * Set the permissions of a role (requires administrative priviledges). This
+	 * Set the permissions of a role (requires administrative privileges). This
 	 * operation will not change permissions obtained through other roles.
 	 * @param roleName the role to set the permissions for
 	 * @param permissions the permissions the specified role shall have from now
@@ -373,7 +373,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	
 	/**
 	 * Retrieve the roles explicitly granted to a specific role, excluding the
-	 * roles obtained through other roles (requires administrative priviledges)
+	 * roles obtained through other roles (requires administrative privileges)
 	 * @param roleName the role to retrieve the roles for
 	 * @return an array holding the roles explicitly granted to the specified
 	 *         role
@@ -384,7 +384,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 	}
 	
 //	/**
-//	 * Grant a set of roles to a role (requires administrative priviledges).
+//	 * Grant a set of roles to a role (requires administrative privileges).
 //	 * Granting a role to itself will have no effect, but creating a circular
 //	 * inheritance will result in an error.
 //	 * @param roleName the role to grant the roles to
@@ -396,7 +396,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	}
 //	
 //	/**
-//	 * Remove a set of roles from a role (requires administrative priviledges).
+//	 * Remove a set of roles from a role (requires administrative privileges).
 //	 * This operation will not change roles obtained through roles other than
 //	 * the removed ones. Removing a role from itself will have no effect.
 //	 * @param roleName the role to remove the roles from
@@ -408,7 +408,7 @@ public class GoldenGateUpsClient implements GoldenGateUpsConstants {
 //	}
 //	
 	/**
-	 * Set the roles of a role (requires administrative priviledges). Granting a
+	 * Set the roles of a role (requires administrative privileges). Granting a
 	 * role to itself will have no effect, but creating a circular inheritance
 	 * will result in an error.
 	 * @param roleName the role to set the roles for

@@ -77,6 +77,7 @@ import de.uka.ipd.idaho.goldenGateServer.GoldenGateServerComponent.ComponentActi
  * @author sautter
  */
 public class IdentifierKeyedDataObjectStore {
+//	private static final String REORGANIZING_FOLDER_MARKER_FILE_NAME = ".becomingPathFolder";
 	private static final String PATH_FOLDER_MARKER_FILE_NAME = ".pathFolder";
 	private static final String DELETED_ZIP_FILE_EXTENSION = ".zip.old";
 	
@@ -504,11 +505,15 @@ public class IdentifierKeyedDataObjectStore {
 			this.interrupt();
 		}
 		void setWaitAfterJobs(boolean wait, ComponentActionConsole cac) {
-			if (this.wait == wait)
-				cac.reportError("Already " + (this.wait ? "dragging" : "hurrying") + " jobs");
+			if (this.wait == wait) {
+				if (cac != null)
+					cac.reportError("Already " + (this.wait ? "dragging" : "hurrying") + " jobs");
+			}
 			else {
 				this.wait = wait;
-				cac.reportResult("Started " + (this.wait ? "dragging" : "hurrying") + " jobs");
+				if (cac == null)
+					logger.logInfo("Started " + (this.wait ? "dragging" : "hurrying") + " jobs");
+				else cac.reportResult("Started " + (this.wait ? "dragging" : "hurrying") + " jobs");
 			}
 		}
 	}
@@ -898,6 +903,16 @@ public class IdentifierKeyedDataObjectStore {
 	}
 	
 	/**
+	 * Finish object storage maintenance as fast as possible, in particular
+	 * work off any pending maintenance jobs in hurry mode
+	 */
+	public void finishMaintenance() {
+		this.rescheduleMaintenanceJobs();
+		if (this.maintenanceWorker != null)
+			this.maintenanceWorker.setWaitAfterJobs(false, null);
+	}
+	
+	/**
 	 * Shut down the data object store, in particular terminating the internal
 	 * maintenance background thread.
 	 */
@@ -948,20 +963,43 @@ public class IdentifierKeyedDataObjectStore {
 		}
 	}
 	
-	private void registerReorganizingFolderPath(String folderPath) {
+	private void registerReorganizingFolderPath(File folder, String folderPath) {
 		synchronized (this.reorganizingFolderPaths) {
 			this.reorganizingFolderPaths.add(folderPath);
 		}
+//		File reorganizingFolderMarker = new File(folder, REORGANIZING_FOLDER_MARKER_FILE_NAME);
+//		if (reorganizingFolderMarker.exists())
+//			this.reorganizingFolderPaths.add(folderPath);
+//		else try {
+//			reorganizingFolderMarker.createNewFile();
+//			this.reorganizingFolderPaths.add(folderPath);
+//		}
+//		catch (IOException ioe) {
+//			this.logger.logError("Error marking reorganizing folder " + folderPath + ":" + ioe.getMessage());
+//			this.logger.logError(ioe);
+//		}
 	}
-	private void unregisterReorganizingFolderPath(String folderPath) {
+	private void unregisterReorganizingFolderPath(File folder, String folderPath) {
 		synchronized (this.reorganizingFolderPaths) {
 			this.reorganizingFolderPaths.remove(folderPath);
 		}
+//		File reorganizingFolderMarker = new File(folder, REORGANIZING_FOLDER_MARKER_FILE_NAME);
+//		if (reorganizingFolderMarker.exists())
+//			reorganizingFolderMarker.delete();
+//		this.reorganizingFolderPaths.remove(folderPath);
 	}
-	private boolean isReorganizingFolderPath(String folderPath) {
+	private boolean isReorganizingFolderPath(File folder, String folderPath) {
 		synchronized (this.reorganizingFolderPaths) {
 			return this.reorganizingFolderPaths.contains(folderPath);
 		}
+//		if (this.reorganizingFolderPaths.contains(folderPath))
+//			return true;
+//		File reorganizingFolderMarker = new File(folder, REORGANIZING_FOLDER_MARKER_FILE_NAME);
+//		if (reorganizingFolderMarker.exists()) {
+//			this.reorganizingFolderPaths.add(folderPath);
+//			return true;
+//		}
+//		else return false;
 	}
 	
 	private static final SimpleDateFormat backupTimestamper = new SimpleDateFormat("yyyyMMdd-HHmm");
@@ -1342,7 +1380,7 @@ public class IdentifierKeyedDataObjectStore {
 	private boolean reorganizeFolder(String folderPath, File folder, boolean isContinuation) {
 		if (this.isPathFolder(folder, folderPath))
 			return true; // this one has already been reorganized
-		this.logger.logInfo(this.name + ": " + (this.isReorganizingFolderPath(folderPath) ? "continue" : "start") + " reorganizing folder " + folderPath + " ...");
+		this.logger.logInfo(this.name + ": " + (this.isReorganizingFolderPath(folder, folderPath) ? "continue" : "start") + " reorganizing folder " + folderPath + " ...");
 		
 		//	get and sort files
 		File[] files = folder.listFiles(new FileFilter() {
@@ -1367,7 +1405,7 @@ public class IdentifierKeyedDataObjectStore {
 				fileDataId = fileDataId.substring(0, fileDataId.indexOf('.'));
 			folderDataIDs.add(fileDataId);
 		}
-		if (this.isReorganizingFolderPath(folderPath) || isContinuation) // need to finish job if folder still marked as reorganizing
+		if (this.isReorganizingFolderPath(folder, folderPath) || isContinuation) // need to finish job if folder still marked as reorganizing
 			this.logger.logInfo(" - continuing reorganization, " + folderDataIDs.size() + " data objects left to handle");
 		else if (folderDataIDs.size() < 2) {
 			this.logger.logInfo(" - reorganization pointless, only one data object");
@@ -1384,7 +1422,7 @@ public class IdentifierKeyedDataObjectStore {
 		}
 		
 		//	mark folder as reorganizing
-		this.registerReorganizingFolderPath(folderPath);
+		this.registerReorganizingFolderPath(folder, folderPath);
 		
 		//	compute folder depth
 		int depth = (("/".length() + folderPath.length()) / 3); // two characters plus one slash per path step, less leading slash
@@ -1450,7 +1488,7 @@ public class IdentifierKeyedDataObjectStore {
 		if (folderMoved) {
 			try {
 				if (this.markPathFolder(folder, folderPath)) {
-					this.unregisterReorganizingFolderPath(folderPath);
+					this.unregisterReorganizingFolderPath(folder, folderPath);
 					this.logger.logInfo(" - marked path folder " + folderPath);
 					return true;
 				}
@@ -1618,7 +1656,7 @@ public class IdentifierKeyedDataObjectStore {
 			}
 			
 			//	parent folder in reorganization, wait and recurse (maintenance should be fast, and a rare event (at most once per folder))
-			if (this.isReorganizingFolderPath(folderPath)) {
+			if (this.isReorganizingFolderPath(dataFolder, folderPath)) {
 				if (attempt > 20)
 					throw new IllegalStateException("Folder '" + folderPath + "' is reorganizing");
 				try {
